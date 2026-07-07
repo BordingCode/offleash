@@ -128,7 +128,10 @@ export function applyForm(w, formId) {
   p.spdMult = F.stats.spd;
   p.dmgMult = F.stats.dmg;
   p.maxJumps = F.stats.jumps || 2;
-  p.moves = F.kit.map((id) => ({ id, tier: 0 }));
+  p.moves = F.kit.map((id) =>
+    MOVES[id].gated && !(w.gatedOk && w.gatedOk.has(id))
+      ? { id: 'blinkstep', tier: 0, locked: id }
+      : { id, tier: 0 });
   p.cds = [0, 0, 0];
   w.events.push({ t: 'form', form: formId, name: F.name });
 }
@@ -250,6 +253,7 @@ export function seedPractice(w) {
   mkFoe(w, 'growler', 700);
   mkFoe(w, 'skitterlin', 950);
   mkFoe(w, 'skitterlin', 1050);
+  if (w.sparEchoes) mkFoe(w, 'echo_wick', 500, { hp: 70, dmg: 8 });
 }
 
 function toast(w, text, dur = 2.2) { w.msg = text; w.msgT = dur; }

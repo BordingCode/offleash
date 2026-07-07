@@ -200,6 +200,39 @@ canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
 .mission.boss { border-color: var(--pink); }
 .mission.boss .mtype { color: var(--pink); }
 .mission.boss.locked { opacity: 0.45; pointer-events: none; }
+.denbtns { display: flex; gap: 10px; justify-content: center; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.closex {
+  position: absolute; top: 8px; right: 10px;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 2px solid rgba(216,219,242,0.5); background: none;
+  color: var(--paper); font-size: 18px; font-weight: 800; cursor: pointer;
+}
+.panel { position: relative; }
+#gallerygrid {
+  display: grid; grid-template-columns: repeat(5, minmax(0,1fr));
+  gap: 8px; margin-top: 10px;
+}
+.formcell {
+  background: rgba(27,21,35,0.7); border: 2px solid rgba(216,219,242,0.25);
+  border-radius: 10px; padding: 6px 4px; text-align: center;
+  color: var(--paper); font-size: 10px; font-weight: 700;
+}
+.formcell.known { border-color: var(--neon); }
+.formcell .fname { display: block; margin-top: 2px; }
+.starter {
+  background: rgba(27,21,35,0.7); border: 2px solid rgba(216,219,242,0.3);
+  border-radius: 12px; padding: 10px 14px; color: var(--paper);
+  font-weight: 800; letter-spacing: 1px; cursor: pointer; font-family: inherit;
+}
+.starter.picked { border-color: var(--neon); background: rgba(62,230,210,0.12); }
+.starter em { display: block; font-size: 10px; opacity: 0.6; font-style: normal; font-weight: 600; letter-spacing: 0; }
+.shopitem {
+  background: rgba(27,21,35,0.7); border: 2px solid rgba(255,179,71,0.4);
+  border-radius: 10px; padding: 8px 10px; color: var(--paper);
+  font-size: 11px; cursor: pointer; font-family: inherit; text-align: left;
+}
+.shopitem.owned { border-color: var(--neon); opacity: 0.6; pointer-events: none; }
+.shopitem b { color: var(--amber); }
 .choicerow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; text-align: left; }
 .choicerow .mission { min-width: 200px; max-width: 240px; }
 .mission.evo { border-color: var(--neon); }

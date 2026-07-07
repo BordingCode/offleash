@@ -9,10 +9,13 @@ import { MOVES } from '../data/moves.js';
 export const MISSIONS_PER_ACT = 5;
 export const CLEAR_TO_BOSS = 3;
 
-export function createRun(seed, starter = 'snig') {
+export function createRun(seed, starter = 'snig', perks = {}) {
   const run = {
     seed,
     starter,
+    perks,
+    hpBonus: perks.bedding ? 12 : 0,
+    healCharges: perks.rainbarrel ? 1 : 0,
     form: starter,       // current form id (base until the Lv-6 evolution)
     moveTiers: {},       // moveId -> earned tier (persists across evolution)
     attuned: false,      // the Lv-10 attunement
@@ -20,9 +23,9 @@ export function createRun(seed, starter = 'snig') {
     board: [],
     cleared: [],
     bossDown: [],
-    xp: 0, level: 1,
+    xp: 0, level: perks.scarecrow ? 2 : 1,
     essence: { static: 0, rain: 0, rust: 0, moon: 0 },
-    hp: FORMS[starter].stats.hp, maxHp: FORMS[starter].stats.hp,
+    hp: 0, maxHp: 0, // set below via runMaxHp
     missionsDone: 0,
     atMission: null,
     stage: 'acts',       // 'acts' -> 'keeper' -> won
@@ -36,6 +39,8 @@ export function createRun(seed, starter = 'snig') {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   run.hunters = pool.slice(0, 3);
+  run.maxHp = runMaxHp(run);
+  run.hp = run.maxHp;
   run.board = genBoard(run);
   return run;
 }
@@ -44,14 +49,15 @@ export const hunterFor = (run) => HUNTERS.find((h) => h.id === run.hunters[run.a
 
 // max HP = the form's base + level growth
 export function runMaxHp(run) {
-  return Math.round(FORMS[run.form].stats.hp + 6 * (run.level - 1));
+  return Math.round(FORMS[run.form].stats.hp + 6 * (run.level - 1) + (run.hpBonus || 0));
 }
 
 // ---------- evolution (Lv 6): offer directions weighted by gathered essence ----------
 export const needsEvolution = (run) => run.level >= EVOLVE_LEVEL && FORMS[run.form].base;
 export const needsAttune = (run) => run.level >= ATTUNE_LEVEL && !FORMS[run.form].base && !run.attuned;
 
-export function evolutionOffer(run, choices = 2) {
+export function evolutionOffer(run, choices = null) {
+  choices = choices || (run.perks && run.perks.trophy ? 3 : 2);
   const dirs = formsFor(run.starter);
   // weight = essence gathered in that direction; ties keep a stable order via seed
   const rng = mulberry32(run.seed * 7 + 5);
@@ -101,8 +107,9 @@ export function genBoard(run) {
   const rng = mulberry32(run.seed * 31 + run.act * 977);
   const arenas = [...ARENAS['act' + run.act]];
   const board = [];
-  const typePool = ['bout', 'bout', 'sabotage', 'rescue', rng() < 0.5 ? 'escort' : 'chase'];
-  for (let i = 0; i < MISSIONS_PER_ACT; i++) {
+  const typePool = ['bout', 'bout', 'sabotage', 'rescue', rng() < 0.5 ? 'escort' : 'chase', 'bout'];
+  const nOffers = run.perks && run.perks.contacts ? 6 : MISSIONS_PER_ACT;
+  for (let i = 0; i < nOffers; i++) {
     const type = typePool[i] || 'bout';
     const T = MISSION_TYPES[type];
     const arena = arenas.splice((rng() * arenas.length) | 0, 1)[0] || 'the back lots';

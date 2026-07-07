@@ -7,6 +7,8 @@ import { buildSprites } from './data/sprites.js';
 import { createWorld, seedPractice, step, startMission, startTrainer, startKeeper, applyForm, KIT } from './game/world.js';
 import { createRun, missionById, clearedCount, bossReady, hunterFor, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS, needsEvolution, needsAttune, evolutionOffer, evolve, attune, upgradeOffer, applyUpgrade } from './game/run.js';
 import { KEEPER } from './data/trainers.js';
+import { SCENES, DEN_IDLE, RESCUE_ORDER, CRYPTID_NAMES } from './data/story.js';
+import { ACHIEVEMENTS } from './data/achievements.js';
 import { HEAL_AFTER_BOSS, MISSION_TYPES } from './data/missions.js';
 import { FORMS } from './data/forms.js';
 import { MOVES, ESSENCE_ICON as EICON, ESSENCE_STYLE } from './data/moves.js';
@@ -67,6 +69,157 @@ function showToast(text) {
   showToast._t = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
+// ---------- the den: home between escapes ----------
+let denStarter = meta.starters[meta.starters.length - 1] || 'snig';
+const SHOP = [
+  { id: 'bedding', name: 'Soft Bedding', desc: '+12 max HP on every run', cost: 3 },
+  { id: 'contacts', name: 'Noticeboard Contacts', desc: 'boards offer 6 missions', cost: 4 },
+  { id: 'scarecrow', name: 'Sparring Scarecrow', desc: 'start runs at Lv 2', cost: 5 },
+  { id: 'rainbarrel', name: 'Rain Barrel', desc: '1 patch-up per act (board button)', cost: 6 },
+  { id: 'trophy', name: 'Trophy Shelf', desc: 'evolution offers 3 directions', cost: 8 },
+];
+const STARTER_BLURB = { snig: 'balanced · the favourite', wick: 'fast & fragile · the experiment', phossa: 'aerial · the navigator', dent: 'tank · the oldest asset' };
+
+function openDen() {
+  mode = 'den';
+  setIntensity(0.3);
+  ['board', 'defeat', 'victory'].forEach((id) => $(id).classList.remove('show'));
+  // starters
+  const row = $('starterrow');
+  row.innerHTML = '';
+  for (const st of meta.starters) {
+    const b = document.createElement('button');
+    b.className = 'starter' + (st === denStarter ? ' picked' : '');
+    b.innerHTML = `${CRYPTID_NAMES[st]}<em>${STARTER_BLURB[st]}</em>`;
+    b.addEventListener('pointerup', () => { denStarter = st; sfx.ui(); openDen(); });
+    row.appendChild(b);
+  }
+  // shop
+  const shop = $('denshop');
+  shop.innerHTML = '';
+  for (const item of SHOP) {
+    const owned = meta.powerTrack[item.id];
+    const b = document.createElement('button');
+    b.className = 'shopitem' + (owned ? ' owned' : '');
+    b.innerHTML = `<b>${item.name}</b> ${owned ? '✓' : `· ${item.cost} ⬡`}<br>${item.desc}`;
+    if (!owned) b.addEventListener('pointerup', () => {
+      if (meta.denTokens >= item.cost) {
+        meta.denTokens -= item.cost;
+        meta.powerTrack[item.id] = true;
+        sfx.pdodge(); saveAll(); openDen();
+      } else { showToast('Not enough den tokens — missions pay them.'); }
+    });
+    shop.appendChild(b);
+  }
+  $('densub').textContent =
+    `friends home: ${meta.denFriends.length + meta.starters.length - 1} · den tokens: ${meta.denTokens} ⬡ · escapes: ${meta.runs} · out: ${meta.wins}`;
+  $('den').classList.add('show');
+  // a story scene, if one has unlocked — else idle small talk
+  const scene = nextScene();
+  if (scene) playScene(scene);
+  else {
+    const [who, line] = DEN_IDLE[meta.runs % DEN_IDLE.length];
+    showToast(`${who}: ${line}`);
+  }
+}
+
+function metaState() {
+  return {
+    runs: meta.runs, wins: meta.wins,
+    starters: meta.starters.length,
+    denFriends: meta.denFriends.length,
+    act3Reached: meta.achProgress?.act3Times || 0,
+  };
+}
+function nextScene() {
+  const st = metaState();
+  return SCENES.find((sc) => !meta.storySeen.includes(sc.id) &&
+    Object.entries(sc.when).every(([k, v]) => st[k] >= v));
+}
+let sceneQ = null, sceneI = 0;
+function playScene(sc) {
+  sceneQ = sc; sceneI = 0;
+  $('scenespeaker').textContent = sc.speaker;
+  $('sceneline').textContent = sc.lines[0];
+  $('scenenext').textContent = sc.lines.length > 1 ? '…' : '— ok —';
+  $('scene').classList.add('show');
+}
+$('scenenext').addEventListener('pointerup', () => {
+  sceneI++;
+  if (sceneQ && sceneI < sceneQ.lines.length) {
+    $('sceneline').textContent = sceneQ.lines[sceneI];
+    $('scenenext').textContent = sceneI < sceneQ.lines.length - 1 ? '…' : '— ok —';
+    sfx.ui();
+  } else {
+    meta.storySeen.push(sceneQ.id);
+    saveAll();
+    $('scene').classList.remove('show');
+    const more = nextScene();
+    if (more) playScene(more);
+  }
+});
+$('boardheal').addEventListener('pointerup', () => {
+  if (!run || run.healCharges <= 0) return;
+  run.healCharges--;
+  run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * 0.4));
+  sfx.pdodge(); saveAll(); openBoard();
+});
+$('beginbtn').addEventListener('pointerup', () => {
+  $('den').classList.remove('show');
+  newRun();
+});
+$('gallerybtn').addEventListener('pointerup', () => {
+  const grid = $('gallerygrid');
+  grid.innerHTML = '';
+  let known = 0;
+  for (const [id, F] of Object.entries(FORMS)) {
+    const k = meta.gallery[id] || F.base && meta.starters.includes(F.cryptid);
+    if (k) known++;
+    const cell = document.createElement('div');
+    cell.className = 'formcell' + (k ? ' known' : '');
+    cell.innerHTML = `${k ? '◆' : '◇'}<span class="fname">${k ? F.name : '???'}</span>`;
+    grid.appendChild(cell);
+  }
+  $('gallerysub').textContent = `${known}/20 forms lived-in`;
+  $('gallery').classList.add('show');
+  sfx.ui();
+});
+$('galleryclose').addEventListener('pointerup', () => $('gallery').classList.remove('show'));
+$('densparbtn').addEventListener('pointerup', () => {
+  $('den').classList.remove('show');
+  $('practicebtn').dispatchEvent(new PointerEvent('pointerup'));
+});
+
+// ---------- achievements ----------
+function award(id) {
+  if (meta.achievements[id]) return;
+  meta.achievements[id] = true;
+  const A = ACHIEVEMENTS.find((a) => a.id === id);
+  showToast(`🏆 ${A.name} — ${A.unlock}`);
+  sfx.pdodge();
+  saveAll();
+}
+const prog = () => (meta.achProgress = meta.achProgress || {});
+function checkMissionAchievements(missionType) {
+  const P = prog();
+  if (world.player.pdodges >= 10) award('gutterreflexes');
+  if (!world._tookHit) award('untouchable');
+  if (missionType === 'sabotage') {
+    P.sabotages = (P.sabotages || 0) + 1;
+    if (P.sabotages >= 5) award('wreckingcrew');
+  }
+  if ((P.potions || 0) >= 15) award('barbrawler');
+  if ((P.interrupts || 0) >= 25) award('readtheroom');
+  if ((P.stanceDmg || 0) >= 300) award('oldgrudges');
+}
+const gatedOk = () => {
+  const set = new Set();
+  if (meta.achievements.untouchable) set.add('afterimage');
+  if (meta.achievements.oldgrudges) set.add('feralpact');
+  if (meta.achievements.exactchange) set.add('luckypaw');
+  return set;
+};
+
 // ---------- the mission board ----------
 const ESSENCE_ICON = { static: '⚡', rain: '🌧', rust: '⚙', moon: '🌙' };
 function openBoard() {
@@ -111,6 +264,9 @@ function openBoard() {
   }
   list.appendChild(boss);
 
+  const heal = $('boardheal');
+  heal.style.display = run.healCharges > 0 && run.hp < run.maxHp ? '' : 'none';
+  heal.textContent = `🛢 patch up (${run.healCharges} left)`;
   $('boardsub').textContent =
     `HP ${run.hp}/${run.maxHp} · Lv ${run.level} · ` +
     Object.entries(run.essence).filter(([, v]) => v > 0).map(([k, v]) => `${ESSENCE_ICON[k]}${v}`).join(' ') || '';
@@ -119,6 +275,8 @@ function openBoard() {
 }
 
 function syncPlayerFromRun() {
+  world.gatedOk = gatedOk();
+  world.sparEchoes = !!meta.achievements.named;
   applyForm(world, run.form);
   const p = world.player;
   for (const mv of p.moves) mv.tier = run.moveTiers[mv.id] || 0;
@@ -191,10 +349,26 @@ function enterKeeper() {
 
 // ---------- mission end / defeat / victory ----------
 function onMissionComplete() {
+  const m = missionById(run, run.atMission);
   syncRunFromWorld();
+  checkMissionAchievements(m ? m.type : 'bout');
+  meta.denTokens += 1;
+  let line = 'Cleared. Back to the hideout. (+1 ⬡)';
+  if (m && m.type === 'rescue') {
+    if (meta.starters.length < 4) {
+      const next = RESCUE_ORDER[meta.starters.length - 1];
+      meta.starters.push(next);
+      if (next === 'dent') award('exactchange');
+      line = `You freed ${CRYPTID_NAMES[next]} — a new starter waits at the den!`;
+      screenFlash(0.5, '62,230,210');
+    } else {
+      meta.denFriends.push('freed-' + (meta.denFriends.length + 1));
+      line = 'Another one free. The den grows louder. (+1 ⬡)';
+    }
+  }
   completeMission(run, run.atMission);
   saveAll();
-  setTimeout(() => afterFightRewards('Cleared. Back to the hideout.'), 900);
+  setTimeout(() => afterFightRewards(line), 900);
 }
 
 // the reward chain: attunement -> upgrade offer -> evolution -> board
@@ -275,7 +449,13 @@ function openEvolve() {
 
 function onBossDown() {
   syncRunFromWorld();
+  meta.denTokens += 3 + (meta.achievements.longwayround ? 1 : 0);
+  if (run.act === 2) { // about to enter act 3
+    prog().act3Times = (prog().act3Times || 0) + 1;
+    if (prog().act3Times >= 5) award('longwayround');
+  }
   run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * HEAL_AFTER_BOSS));
+  if (run.perks && run.perks.rainbarrel) run.healCharges = 1;
   const result = completeBoss(run);
   if (result === 'keeper') {
     saveAll();
@@ -302,6 +482,15 @@ function onKeeperDown() {
 const defeatStats = { kos: 0, bestCombo: 0 };
 function showDefeat(cause) {
   meta.runs++;
+  if (world.trainer) {
+    const id = world.trainer.def.id;
+    const P = prog();
+    P.deathsBy = P.deathsBy || {};
+    P.deathsBy[id] = (P.deathsBy[id] || 0) + 1;
+    if (P.deathsBy[id] >= 2) award('repeatoffender');
+  }
+  if (world.keeper) award('named');
+  if ((prog().stanceDmg || 0) >= 300) award('oldgrudges');
   const reached = run ? `Reached: act ${run.act}, ${run.missionsDone} missions in.` : '';
   run = null;
   SAVE.clearRun(meta, { muted: isMuted() });
@@ -311,15 +500,15 @@ function showDefeat(cause) {
 }
 $('againbtn').addEventListener('pointerup', () => {
   $('defeat').classList.remove('show');
-  newRun();
+  openDen();
 });
 $('winbtn').addEventListener('pointerup', () => {
   $('victory').classList.remove('show');
-  newRun();
+  openDen();
 });
 
 function newRun() {
-  run = createRun((Math.random() * 1e9) | 0);
+  run = createRun((Math.random() * 1e9) | 0, denStarter, { ...meta.powerTrack });
   defeatStats.kos = 0; defeatStats.bestCombo = 0;
   saveAll();
   sfx.ui();
@@ -394,7 +583,13 @@ function handleEvents() {
       case 'clink': sfx.blocked(); floatText(ev.x, ev.y, 'clink', { color: '#776a85', size: 12 }); break;
       case 'warded': sfx.blocked(); floatText(ev.x, ev.y, 'warded', { color: '#9fc4e8', size: 12 }); break;
       case 'toll': sfx.tell(); showToast('The bell tolls — the pack quickens! Silence it!'); break;
-      case 'smashed': sfx.hit(true); burst(ev.x, ev.y, 10, { color: '#ffe08a', speed: 160, grav: 200 }); break;
+      case 'smashed':
+        sfx.hit(true); burst(ev.x, ev.y, 10, { color: '#ffe08a', speed: 160, grav: 200 });
+        if (ev.kind === 'potion') {
+          prog().potions = (prog().potions || 0) + 1;
+          if (meta.achievements.barbrawler) world.pickups.push({ x: ev.x, y: 460, heal: 6 });
+        }
+        break;
       case 'eshoot': sfx.tell(); break;
       case 'foe_healed': floatText(ev.x, ev.y, '+heal', { color: '#ff8fa3', size: 13 }); break;
       case 'cage_open':
@@ -428,12 +623,15 @@ function handleEvents() {
       case 'tell': sfx.tell(); break;
       case 'player_hurt':
         sfx.hurt(); hitStop(0.07); addTrauma(0.35); screenFlash(0.22, '224,95,208');
+        world._tookHit = true;
+        if (world.player.bide || world.player.furyOn) prog().stanceDmg = (prog().stanceDmg || 0) + ev.dmg;
         floatText(ev.x, ev.y, `-${ev.dmg}`, { color: '#ff8fa3', size: 20 });
         break;
       case 'blocked': sfx.blocked(); floatText(ev.x, ev.y, 'blocked', { color: '#9fc4e8', size: 14 }); break;
       case 'ability': sfx.ability(); floatText(ev.x, ev.y, ev.name, { color: '#b8fff2', size: 14 }); break;
       case 'interrupt':
         sfx.interrupt(); hitStop(0.1);
+        prog().interrupts = (prog().interrupts || 0) + 1;
         floatText(ev.x, ev.y, 'INTERRUPTED', { color: '#ffe08a', size: 18, crit: true });
         break;
       case 'rupture':
@@ -489,9 +687,8 @@ $('startbtn').addEventListener('pointerup', () => {
   initAudio(); resumeAudio(); startMusic();
   $('title').classList.add('hidden');
   started = true;
-  if (!run) run = createRun((Math.random() * 1e9) | 0);
-  saveAll();
-  openBoard();
+  if (run) openBoard();
+  else openDen();
 });
 $('practicebtn').addEventListener('pointerup', () => {
   // the yard: sparring without stakes
