@@ -164,6 +164,42 @@ canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
   cursor: pointer; font-family: inherit;
 }
 .bigbtn:active { background: rgba(62, 230, 210, 0.3); }
+.smallbtn {
+  font-size: 12px; font-weight: 700; letter-spacing: 1px;
+  padding: 7px 18px; border-radius: 16px;
+  border: 2px solid rgba(216, 219, 242, 0.35);
+  background: none; color: var(--paper); opacity: 0.7;
+  cursor: pointer; font-family: inherit; margin-top: 10px;
+}
+.panel.wide { max-width: 720px; width: 92vw; max-height: 90svh; overflow-y: auto; }
+.panel .win { color: var(--neon); }
+#runline { color: var(--paper); font-weight: 800; font-size: 13px; letter-spacing: 2px; opacity: 0.85; pointer-events: auto; }
+#missions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 4px;
+  text-align: left;
+}
+.mission {
+  background: rgba(27, 21, 35, 0.7);
+  border: 2px solid rgba(216, 219, 242, 0.3);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--paper);
+  font-family: inherit;
+  cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.mission:active { border-color: var(--neon); background: rgba(62, 230, 210, 0.12); }
+.mission .mtype { font-size: 10px; font-weight: 900; letter-spacing: 1.5px; color: var(--neon); }
+.mission strong { font-size: 14px; }
+.mission em { font-size: 11px; opacity: 0.65; font-style: normal; line-height: 1.35; }
+.mission .mdanger { font-size: 11px; color: var(--amber); }
+.mission.done { opacity: 0.38; border-style: dashed; pointer-events: none; }
+.mission.boss { border-color: var(--pink); }
+.mission.boss .mtype { color: var(--pink); }
+.mission.boss.locked { opacity: 0.45; pointer-events: none; }
 
 /* ---------- rotate hint (this game is LANDSCAPE) ---------- */
 #rotate {

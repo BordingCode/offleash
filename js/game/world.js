@@ -100,6 +100,11 @@ export function createWorld(seed = 1) {
     cam: { x: 0 },
     player: mkPlayer(),
     foes: [],
+    pylons: [],              // sabotage objectives {x, hp, maxHp}
+    pickups: [],             // {x, y, heal}
+    mission: null,           // {def, wave, done}
+    boss: null,              // boss entity ref while an act boss lives
+    essenceGained: { static: 0, rain: 0, rust: 0, moon: 0 },
     events: [],
     slowmoT: 0,
     msg: null, msgT: 0,
@@ -107,6 +112,57 @@ export function createWorld(seed = 1) {
     paused: false,
   };
   return w;
+}
+
+// ---------- missions ----------
+export function startMission(w, def) {
+  w.mission = { def, wave: 0, done: false };
+  w.arena = { w: def.arenaW, name: def.arena };
+  w.foes.length = 0;
+  w.pylons.length = 0;
+  w.pickups.length = 0;
+  w.player.x = 120;
+  w.player.y = GROUND_Y;
+  w.player.combo = 0;
+  w.cam.x = 0;
+  if (def.pylons > 0) {
+    for (let i = 0; i < def.pylons; i++) {
+      const px = def.arenaW * (0.45 + (i * 0.22));
+      w.pylons.push({ x: px, hp: 60, maxHp: 60 });
+    }
+  }
+  spawnWave(w);
+  toast(w, `${def.type === 'sabotage' ? 'Smash the pylons' : 'Clear them out'} — ${def.arena}.`, 3.0);
+}
+
+function spawnWave(w) {
+  const def = w.mission.def;
+  const wave = def.waves[w.mission.wave % def.waves.length];
+  for (const e of wave) {
+    mkFoe(w, e.s, clamp(def.arenaW * e.x, 60, def.arenaW - 60));
+  }
+  w.events.push({ t: 'wave', n: w.mission.wave + 1 });
+}
+
+export function startBoss(w, bossDef) {
+  w.mission = null;
+  w.arena = { w: 1200, name: bossDef.name };
+  w.foes.length = 0;
+  w.pylons.length = 0;
+  w.pickups.length = 0;
+  w.player.x = 140;
+  w.player.y = GROUND_Y;
+  w.cam.x = 0;
+  const f = mkFoe(w, bossDef.species, 900);
+  // FLAT authored stats — never scaled off anything
+  f.hp = f.maxHp = bossDef.hp;
+  f.boss = bossDef;
+  f.scale = bossDef.scale;
+  f.w *= bossDef.scale; f.h *= bossDef.scale;
+  w.boss = f;
+  for (const s of bossDef.adds) mkFoe(w, s, 1050 + w.rng() * 100);
+  toast(w, `${bossDef.name} bars the way.`, 3.0);
+  w.events.push({ t: 'boss_start', name: bossDef.name });
 }
 
 // M1 practice-yard spawner: keeps a small crowd alive so feel can be tested forever
@@ -155,6 +211,29 @@ function damageFoe(w, f, def, mul = 1) {
   if (f.hp <= 0) {
     w.events.push({ t: 'foe_down', x: f.x, y: f.y - f.h / 2, species: f.species, combo: p.combo });
     f.dead = true;
+    if (f.boss) {
+      w.boss = null;
+      w.events.push({ t: 'boss_down', name: f.boss.name });
+    } else {
+      const B = BESTIARY[f.species];
+      w.essenceGained[B.essence] = (w.essenceGained[B.essence] || 0) + 1;
+      w.events.push({ t: 'xp', amt: f.species === 'growler' ? 14 : 6 });
+      w.events.push({ t: 'essence', kind: B.essence, x: f.x, y: f.y - 30 });
+      // the streets provide: an occasional dented food can
+      if (w.rng() < 0.22) w.pickups.push({ x: f.x, y: GROUND_Y, heal: 12 });
+    }
+  }
+}
+
+// attacks also smash sabotage pylons
+function hitPylons(w, def, hx, hy, hw, hh) {
+  for (const py of w.pylons) {
+    if (py.hp <= 0) continue;
+    if (rectsHit(hx, hy, hw, hh, py.x - 18, GROUND_Y - 70, 36, 70)) {
+      py.hp -= def.dmg;
+      w.events.push({ t: 'pylon_hit', x: py.x, y: GROUND_Y - 40, dmg: def.dmg });
+      if (py.hp <= 0) w.events.push({ t: 'pylon_down', x: py.x, y: GROUND_Y - 40 });
+    }
   }
 }
 
@@ -221,6 +300,13 @@ function useAbility(w, slot) {
       if (f.dead || !f.onGround) continue;
       if (Math.abs(f.x - p.x) < 330) {
         damageFoe(w, f, { dmg: 16, kb: { vx: 120, vy: -420 }, hitstop: 0.08, launch: true });
+      }
+    }
+    for (const py of w.pylons) {
+      if (py.hp > 0 && Math.abs(py.x - p.x) < 330) {
+        py.hp -= 16;
+        w.events.push({ t: 'pylon_hit', x: py.x, y: GROUND_Y - 40, dmg: 16 });
+        if (py.hp <= 0) w.events.push({ t: 'pylon_down', x: py.x, y: GROUND_Y - 40 });
       }
     }
     w.events.push({ t: 'rupture', x: p.x, y: p.y });
@@ -309,6 +395,7 @@ function stepPlayer(w, dt, input) {
           damageFoe(w, f, d);
         }
       }
+      if (!a.pylonsHit) { a.pylonsHit = true; hitPylons(w, d, hx, hy, hw, hh); }
     }
     const total = d.startup + d.active + d.recovery;
     // jump-cancel on HIT: a connected launcher/chain can cancel into a jump —
@@ -442,7 +529,7 @@ function stepFoe(w, f, dt) {
     if (dist > (f.species === 'growler' ? 190 : 90)) {
       f.x += sign(dx) * B.walk * dt;
     } else {
-      f.state = 'tell'; f.stateT = B.tell;
+      f.state = 'tell'; f.stateT = f.boss ? f.boss.tell : B.tell;
       f.attackHit = false;
       w.events.push({ t: 'tell', x: f.x, y: f.y - f.h - 10, species: f.species });
     }
@@ -471,8 +558,8 @@ function stepFoe(w, f, dt) {
             w.events.push({ t: 'pdodge', x: p.x, y: p.y - 60 });
           }
         } else {
-          w.lastThreat = `${B.name}'s ${f.species === 'growler' ? 'lunge' : 'rush'}`;
-          if (hurtPlayer(w, B.dmg, f.x)) f.attackHit = true;
+          w.lastThreat = f.boss ? `${f.boss.name}` : `${B.name}'s ${f.species === 'growler' ? 'lunge' : 'rush'}`;
+          if (hurtPlayer(w, f.boss ? f.boss.dmg : B.dmg, f.x)) f.attackHit = true;
         }
       }
     }
@@ -502,6 +589,40 @@ export function step(w, dt, input) {
   // deferred removal (never splice mid-frame structures)
   for (let i = w.foes.length - 1; i >= 0; i--) if (w.foes[i].dead) w.foes.splice(i, 1);
   stepCamera(w, dt);
+
+  // heal-can pickups
+  const p = w.player;
+  for (let i = w.pickups.length - 1; i >= 0; i--) {
+    const pk = w.pickups[i];
+    if (Math.abs(pk.x - p.x) < 40 && p.y > GROUND_Y - 50) {
+      p.hp = Math.min(p.maxHp, p.hp + pk.heal);
+      w.events.push({ t: 'heal', amt: pk.heal, x: pk.x, y: GROUND_Y - 30 });
+      w.pickups.splice(i, 1);
+    }
+  }
+
+  // mission director
+  if (w.mission && !w.mission.done) {
+    const def = w.mission.def;
+    if (def.type === 'sabotage') {
+      // waves keep coming while the pylons stand
+      if (w.pylons.every((py) => py.hp <= 0)) {
+        w.mission.done = true;
+        w.events.push({ t: 'mission_complete' });
+      } else if (w.foes.length === 0) {
+        w.mission.wave++;
+        spawnWave(w);
+      }
+    } else if (w.foes.length === 0) {
+      w.mission.wave++;
+      if (w.mission.wave >= def.waves.length) {
+        w.mission.done = true;
+        w.events.push({ t: 'mission_complete' });
+      } else {
+        spawnWave(w);
+      }
+    }
+  }
 
   // M1 practice yard: keep the crowd topped up
   if (w.practice && w.foes.length < 2) {

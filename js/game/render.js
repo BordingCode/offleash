@@ -137,6 +137,40 @@ export function draw(view, w, S) {
     ctx.fill();
   }
 
+  // ---- sabotage pylons ----
+  for (const py of w.pylons) {
+    if (py.hp <= 0) {
+      // rubble
+      ctx.fillStyle = '#3a2f45';
+      ctx.fillRect(py.x - 20, GROUND_Y - 16, 40, 16);
+      continue;
+    }
+    ctx.fillStyle = '#4d4457';
+    ctx.fillRect(py.x - 12, GROUND_Y - 70, 24, 70);
+    ctx.fillStyle = '#1b1523';
+    ctx.fillRect(py.x - 15, GROUND_Y - 76, 30, 10);
+    const hum = 0.5 + Math.sin(w.t * 6) * 0.3;
+    ctx.fillStyle = `rgba(224,95,208,${hum})`;
+    ctx.fillRect(py.x - 6, GROUND_Y - 64, 12, 12);
+    ctx.strokeStyle = `rgba(224,95,208,${hum * 0.5})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(py.x, GROUND_Y - 58, 20 + Math.sin(w.t * 3) * 4, 0, TAU); ctx.stroke();
+    // hp pips
+    ctx.fillStyle = 'rgba(27,21,35,0.8)';
+    ctx.fillRect(py.x - 22, GROUND_Y - 92, 44, 6);
+    ctx.fillStyle = '#e05fd0';
+    ctx.fillRect(py.x - 21, GROUND_Y - 91, 42 * Math.max(0, py.hp / py.maxHp), 4);
+  }
+
+  // ---- heal cans ----
+  for (const pk of w.pickups) {
+    const bob = Math.sin(w.t * 4 + pk.x) * 3;
+    ctx.fillStyle = '#e8b04a';
+    ctx.fillRect(pk.x - 6, GROUND_Y - 16 + bob, 12, 14);
+    ctx.fillStyle = '#f2ead9';
+    ctx.fillRect(pk.x - 6, GROUND_Y - 16 + bob, 12, 4);
+  }
+
   // ---- foes ----
   for (const f of w.foes) {
     const B = BESTIARY[f.species];
@@ -257,6 +291,36 @@ export function draw(view, w, S) {
   ctx.strokeText(w.arena.name, WORLD_W / 2, tagY);
   ctx.fillStyle = '#d8dbf2';
   ctx.fillText(w.arena.name, WORLD_W / 2, tagY);
+
+  // boss bar
+  if (w.boss) {
+    const b = w.boss;
+    ctx.font = '800 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(27,21,35,0.8)';
+    ctx.strokeText(b.boss.name, WORLD_W / 2, 46);
+    ctx.fillStyle = '#e05fd0';
+    ctx.fillText(b.boss.name, WORLD_W / 2, 46);
+    const bw = 360;
+    ctx.fillStyle = 'rgba(27,21,35,0.85)';
+    ctx.fillRect(WORLD_W / 2 - bw / 2 - 2, 54, bw + 4, 12);
+    ctx.fillStyle = '#e05fd0';
+    ctx.fillRect(WORLD_W / 2 - bw / 2, 56, bw * Math.max(0, b.hp / b.maxHp), 8);
+  }
+
+  // mission objective line
+  if (w.mission && !w.mission.done) {
+    const def = w.mission.def;
+    ctx.font = '700 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(27,21,35,0.7)';
+    const line = def.type === 'sabotage'
+      ? `pylons: ${w.pylons.filter(py => py.hp > 0).length} standing`
+      : `wave ${Math.min(w.mission.wave + 1, def.waves.length)}/${def.waves.length}`;
+    ctx.strokeText(line, WORLD_W / 2, 40);
+    ctx.fillStyle = 'rgba(216,219,242,0.85)';
+    ctx.fillText(line, WORLD_W / 2, 40);
+  }
 
   // combo counter
   if (p.combo >= 3) {

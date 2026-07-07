@@ -1,9 +1,13 @@
-// Boot + glue: sim events -> FX/audio/HUD. Pure sim lives in game/world.js.
+// Boot + glue: screens (title → board → fight), sim events -> FX/audio/HUD/save.
+// Pure sim in game/world.js; run logic in game/run.js; persistence in game/save.js.
 import { CanvasView } from './engine/canvas.js';
 import { GameLoop } from './engine/loop.js';
 import { FX, updateFX, addTrauma, hitStop, screenFlash, burst, shockwave, floatText } from './engine/fx.js';
 import { buildSprites } from './data/sprites.js';
-import { createWorld, seedPractice, step, KIT } from './game/world.js';
+import { createWorld, seedPractice, step, startMission, startBoss, KIT } from './game/world.js';
+import { createRun, missionById, clearedCount, bossReady, actBoss, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS } from './game/run.js';
+import { HEAL_AFTER_BOSS, MISSION_TYPES } from './data/missions.js';
+import * as SAVE from './game/save.js';
 import { draw } from './game/render.js';
 import { Input } from './game/input.js';
 import { initAudio, resumeAudio, sfx, startMusic, setMuted, isMuted, setIntensity } from './audio.js';
@@ -17,23 +21,28 @@ const input = new Input($('stickzone'), {
   abilities: ['ab1btn', 'ab2btn', 'ab3btn'],
 });
 
+// ---------- persistent state ----------
+const loaded = SAVE.load();
+let meta = loaded.meta;
+let run = loaded.run;               // null = no escape underway
 let world = createWorld(1);
-world.practice = true;
-seedPractice(world);
+let mode = 'title';                 // title | board | fight
 let started = false;
 let frameMs = 0;
 const errors = [];
 window.addEventListener('error', (e) => errors.push(String(e.message)));
 FX.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const saveAll = () => SAVE.save(meta, run, { muted: isMuted() });
+
 // ---------- HUD ----------
-const hud = { hp: -1, cds: [-1, -1, -1] };
+const hud = { hp: -1, max: -1, cds: [-1, -1, -1], runline: '' };
 function renderHud() {
   const p = world.player;
-  if (p.hp !== hud.hp) {
-    hud.hp = p.hp;
+  if (p.hp !== hud.hp || p.maxHp !== hud.max) {
+    hud.hp = p.hp; hud.max = p.maxHp;
     $('hpfill').style.width = Math.max(0, (p.hp / p.maxHp) * 100) + '%';
-    $('hpfill').classList.toggle('low', p.hp <= 30);
+    $('hpfill').classList.toggle('low', p.hp <= p.maxHp * 0.3);
   }
   for (let i = 0; i < 3; i++) {
     const cd = Math.ceil(p.cds[i]);
@@ -44,6 +53,8 @@ function renderHud() {
       btn.querySelector('.cdnum').textContent = cd > 0 ? cd : '';
     }
   }
+  const line = run ? `ACT ${run.act} · Lv ${run.level}` : '';
+  if (line !== hud.runline) { hud.runline = line; $('runline').textContent = line; }
 }
 function showToast(text) {
   const el = $('toast');
@@ -53,24 +64,144 @@ function showToast(text) {
   showToast._t = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// ---------- defeat screen ----------
+// ---------- the mission board ----------
+const ESSENCE_ICON = { static: '⚡', rain: '🌧', rust: '⚙', moon: '🌙' };
+function openBoard() {
+  mode = 'board';
+  setIntensity(0.35);
+  const list = $('missions');
+  list.innerHTML = '';
+  for (const m of run.board) {
+    const done = run.cleared.includes(m.id);
+    const card = document.createElement('button');
+    card.className = 'mission' + (done ? ' done' : '');
+    card.innerHTML = `
+      <span class="mtype">${MISSION_TYPES[m.type].icon} ${MISSION_TYPES[m.type].name}</span>
+      <strong>${m.arena}</strong>
+      <em>${m.flavor}</em>
+      <span class="mdanger">${'✦'.repeat(m.danger)}${done ? ' · CLEARED' : ''}</span>`;
+    if (!done) {
+      card.addEventListener('pointerup', () => enterMission(m.id));
+    }
+    list.appendChild(card);
+  }
+  // the act boss card
+  const boss = document.createElement('button');
+  const ready = bossReady(run);
+  boss.className = 'mission boss' + (ready ? '' : ' locked');
+  const B = actBoss(run);
+  boss.innerHTML = `
+    <span class="mtype">☠ ACT ${run.act} HUNT</span>
+    <strong>${B.name}</strong>
+    <em>${ready ? 'It knows you’re coming. Go anyway.' : `Clear ${CLEAR_TO_BOSS - clearedCount(run)} more mission${CLEAR_TO_BOSS - clearedCount(run) === 1 ? '' : 's'} to draw it out.`}</em>
+    <span class="mdanger">${'✦'.repeat(3)}</span>`;
+  if (ready) boss.addEventListener('pointerup', enterBoss);
+  list.appendChild(boss);
+
+  $('boardsub').textContent =
+    `HP ${run.hp}/${run.maxHp} · Lv ${run.level} · ` +
+    Object.entries(run.essence).filter(([, v]) => v > 0).map(([k, v]) => `${ESSENCE_ICON[k]}${v}`).join(' ') || '';
+  $('boardact').textContent = `ACT ${run.act} — ${['the outer yards', 'the deep city', 'the facility ring'][run.act - 1]}`;
+  $('board').classList.add('show');
+}
+
+function syncPlayerFromRun() {
+  world.player.hp = run.hp;
+  world.player.maxHp = run.maxHp;
+}
+function syncRunFromWorld() {
+  run.hp = Math.max(0, world.player.hp);
+  for (const [k, v] of Object.entries(world.essenceGained)) {
+    run.essence[k] += v;
+    world.essenceGained[k] = 0;
+  }
+}
+
+function enterMission(id) {
+  const m = missionById(run, id);
+  if (!m) return;
+  run.atMission = id;
+  saveAll();                        // snapshot BEFORE the fight — quitting resumes here
+  world = createWorld(run.seed * 131 + run.missionsDone * 7 + run.act * 31);
+  syncPlayerFromRun();
+  startMission(world, m);
+  $('board').classList.remove('show');
+  mode = 'fight';
+  setIntensity(0.7);
+  sfx.ui();
+}
+
+function enterBoss() {
+  world = createWorld(run.seed * 977 + run.act);
+  syncPlayerFromRun();
+  startBoss(world, actBoss(run));
+  $('board').classList.remove('show');
+  mode = 'fight';
+  setIntensity(1.0);
+  sfx.ui();
+}
+
+// ---------- mission end / defeat / victory ----------
+function onMissionComplete() {
+  syncRunFromWorld();
+  completeMission(run, run.atMission);
+  saveAll();
+  setTimeout(() => {
+    showToast('Cleared. Back to the hideout.');
+    openBoard();
+  }, 900);
+}
+
+function onBossDown() {
+  syncRunFromWorld();
+  run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * HEAL_AFTER_BOSS));
+  const result = completeBoss(run);
+  if (result === 'won') {
+    meta.wins++; meta.runs++;
+    run = null;
+    SAVE.clearRun(meta, { muted: isMuted() });
+    setTimeout(() => {
+      $('winsub').textContent = 'You breach the outer gate. The rain, for once, feels like applause. (The Keeper is waiting… in a later milestone.)';
+      $('victory').classList.add('show');
+      mode = 'board';
+    }, 1200);
+  } else {
+    saveAll();
+    setTimeout(() => {
+      showToast(`Act ${run.act - 1} cleared — the city opens. Patched up a little.`);
+      openBoard();
+    }, 1200);
+  }
+}
+
+const defeatStats = { kos: 0, bestCombo: 0 };
 function showDefeat(cause) {
+  meta.runs++;
+  const reached = run ? `Reached: act ${run.act}, ${run.missionsDone} missions in.` : '';
+  run = null;
+  SAVE.clearRun(meta, { muted: isMuted() });
   $('defcause').textContent = `Caught by ${cause}.`;
-  $('defstats').textContent = `Foes felled: ${defeatStats.kos} · best combo ×${defeatStats.bestCombo} · perfect dodges: ${world.player.pdodges}`;
+  $('defstats').textContent = `${reached} Foes felled: ${defeatStats.kos} · best combo ×${defeatStats.bestCombo} · perfect dodges: ${world.player.pdodges}`;
   $('defeat').classList.add('show');
 }
-const defeatStats = { kos: 0, bestCombo: 0 };
 $('againbtn').addEventListener('pointerup', () => {
   $('defeat').classList.remove('show');
-  world = createWorld((Math.random() * 1e9) | 0);
-  world.practice = true;
-  seedPractice(world);
-  defeatStats.kos = 0; defeatStats.bestCombo = 0;
-  hud.hp = -1;
-  sfx.ui();
+  newRun();
+});
+$('winbtn').addEventListener('pointerup', () => {
+  $('victory').classList.remove('show');
+  newRun();
 });
 
-// ---------- events -> juice ----------
+function newRun() {
+  run = createRun((Math.random() * 1e9) | 0);
+  defeatStats.kos = 0; defeatStats.bestCombo = 0;
+  saveAll();
+  sfx.ui();
+  openBoard();
+}
+
+// ---------- sim events -> juice ----------
 function handleEvents() {
   for (const ev of world.events) {
     switch (ev.t) {
@@ -88,6 +219,27 @@ function handleEvents() {
         defeatStats.bestCombo = Math.max(defeatStats.bestCombo, ev.combo);
         burst(ev.x, ev.y, 18, { color: '#3ee6d2', speed: 200, grav: 200 });
         break;
+      case 'xp': if (run) { if (grantXp(run, ev.amt)) { sfx.pdodge(); showToast(`Level ${run.level}!`); } } break;
+      case 'essence': floatText(ev.x, ev.y, ESSENCE_ICON[ev.kind], { color: '#b8fff2', size: 16 }); break;
+      case 'heal':
+        sfx.ui();
+        floatText(ev.x, ev.y, `+${ev.amt}`, { color: '#7ef2e2', size: 16 });
+        break;
+      case 'wave': if (ev.n > 1) showToast(`Wave ${ev.n}`); break;
+      case 'pylon_hit': sfx.hit(false); burst(ev.x, ev.y, 5, { color: '#e05fd0', speed: 120 }); break;
+      case 'pylon_down':
+        sfx.slam(); addTrauma(0.25);
+        shockwave(ev.x, ev.y, { color: '#e05fd0', max: 80 });
+        break;
+      case 'mission_complete':
+        sfx.pdodge(); screenFlash(0.3, '62,230,210');
+        onMissionComplete();
+        break;
+      case 'boss_start': sfx.tell(); addTrauma(0.3); break;
+      case 'boss_down':
+        sfx.foeDown(); screenFlash(0.5, '224,95,208'); addTrauma(0.4);
+        onBossDown();
+        break;
       case 'foe_land': burst(ev.x, ev.y, 6, { color: '#776a85', speed: 110, grav: 250 }); break;
       case 'jump': sfx.jump(); break;
       case 'dive': sfx.dash(); break;
@@ -95,7 +247,6 @@ function handleEvents() {
         sfx.slam(); hitStop(0.06); addTrauma(0.3);
         shockwave(ev.x, ev.y, { color: '#ffb347', max: 90 });
         break;
-      case 'land': break;
       case 'dash': sfx.dash(); break;
       case 'pdodge':
         sfx.pdodge();
@@ -121,7 +272,6 @@ function handleEvents() {
         sfx.defeat(); addTrauma(0.5);
         setTimeout(() => showDefeat(ev.cause), 700);
         break;
-      case 'spawn': break;
     }
   }
   if (world.msg && world.msg !== handleEvents._last) showToast(world.msg);
@@ -132,7 +282,7 @@ function handleEvents() {
 // ---------- loop ----------
 const loop = new GameLoop({
   update(dt) {
-    if (!started) return;
+    if (!started || mode !== 'fight') return;
     updateFX(dt);
     if (FX.freeze > 0) { FX.freeze -= dt; return; }
     loop.speed = world.slowmoT > 0 ? 0.3 : 1;
@@ -148,11 +298,10 @@ const loop = new GameLoop({
 });
 window.addEventListener('resize', () => view.resize());
 
-// visible stick indicator
 let stickShown = false;
 function updateStick() {
   const base = $('stickbase'), knob = $('stickknob');
-  if (input.stick.id === -1) {
+  if (input.stick.id === -1 || mode !== 'fight') {
     if (stickShown) { stickShown = false; base.classList.remove('show'); }
     return;
   }
@@ -165,17 +314,37 @@ function updateStick() {
 
 // ---------- title ----------
 $('startbtn').addEventListener('pointerup', () => {
-  initAudio(); resumeAudio(); startMusic(); setIntensity(0.7);
+  initAudio(); resumeAudio(); startMusic();
   $('title').classList.add('hidden');
   started = true;
-  showToast('Practice yard — spar freely. (This is milestone 1.)');
+  if (!run) run = createRun((Math.random() * 1e9) | 0);
+  saveAll();
+  openBoard();
+});
+$('practicebtn').addEventListener('pointerup', () => {
+  // the yard: sparring without stakes
+  $('board').classList.remove('show');
+  world = createWorld((Math.random() * 1e9) | 0);
+  world.practice = true;
+  if (run) syncPlayerFromRun(); else { world.player.hp = world.player.maxHp = 100; }
+  world.player.hp = world.player.maxHp; // sparring is safe for the RUN — hp not synced back
+  seedPractice(world);
+  mode = 'fight';
+  world.practiceReturn = true;
+  showToast('Sparring — defeat here costs nothing. Tap RUN LINE to return.');
+  sfx.ui();
+});
+$('runline').addEventListener('pointerup', () => {
+  if (mode === 'fight' && world.practice) openBoard();
 });
 $('mutebtn').addEventListener('pointerup', (e) => {
   const m = setMuted(!isMuted());
   e.target.textContent = m ? '×' : '♪';
-  localStorage.setItem('offleash_muted', m ? '1' : '0');
+  saveAll();
 });
-if (localStorage.getItem('offleash_muted') === '1') { setMuted(true); $('mutebtn').textContent = '×'; }
+if (loaded.settings.muted) { /* applied after initAudio */ }
+
+$('startbtn').textContent = run ? 'CONTINUE THE ESCAPE' : 'RUN';
 
 loop.start();
 
@@ -186,7 +355,12 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 // debug/test hooks
 window.__ol = {
   get world() { return world; },
+  get run() { return run; },
+  get meta() { return meta; },
   input, view, errors, loop, FX, KIT,
   get frameMs() { return frameMs; },
   start() { $('startbtn').dispatchEvent(new Event('pointerup')); },
+  enterMission, enterBoss, openBoard,
+  save: saveAll,
+  reset() { localStorage.removeItem('offleash_save_v1'); location.reload(); },
 };

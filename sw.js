@@ -1,5 +1,5 @@
 // OFF-LEASH service worker — network-first, cache fallback. Bump CACHE on EVERY release.
-const CACHE = 'offleash-v1';
+const CACHE = 'offleash-v2';
 const SHELL = [
   './',
   'index.html',
@@ -17,6 +17,9 @@ const SHELL = [
   'js/game/world.js',
   'js/game/render.js',
   'js/game/input.js',
+  'js/game/run.js',
+  'js/game/save.js',
+  'js/data/missions.js',
   'manifest.json',
   'assets/icons/icon.svg',
 ];
