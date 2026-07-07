@@ -197,5 +197,79 @@ const BOUT = (over = {}) => ({ id: 'x', type: 'bout', arena: 'test', danger: 1,
   ok(r0.board.every(m => !m.waves.some(wv => wv.some(e => e.s === 'bellwether'))), 'Pursuit 0 ⇒ no marshal');
 }
 
+console.log('— run loop (M2) —');
+import {
+  bossReady, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS,
+  needsEvolution, needsAttune, evolutionOffer, evolve, attune, upgradeOffer, applyUpgrade,
+} from '../js/game/run.js';
+import { FORMS } from '../js/data/forms.js';
+{
+  const r = createRun(11);
+  ok(r.board.length === 5, 'a fresh board offers 5 missions');
+  ok(r.board.some(m => m.type === 'sabotage'), 'every board has ≥1 sabotage');
+  ok(r.act === 1 && r.stage === 'acts', 'a run starts at act 1');
+}
+{
+  const r = createRun(11);
+  ok(!bossReady(r), 'the act hunter is locked before clearing 3');
+  for (let i = 0; i < CLEAR_TO_BOSS; i++) completeMission(r, r.board[i].id);
+  ok(bossReady(r), 'clearing 3 missions draws out the act hunter');
+}
+{
+  const r = createRun(11);
+  for (let i = 0; i < CLEAR_TO_BOSS; i++) completeMission(r, r.board[i].id);
+  const res = completeBoss(r);
+  ok(res === 'next' && r.act === 2, 'beating the act-1 hunter advances to act 2');
+  ok(r.cleared.length === 0, 'act 2 begins with a fresh cleared list');
+  ok(r.board.length >= 5, 'act 2 regenerates a board');
+}
+{
+  const r = createRun(11);
+  r.act = 3;
+  const res = completeBoss(r);
+  ok(res === 'keeper' && r.stage === 'keeper', 'beating act 3 sends you to THE KEEPER');
+}
+{
+  const r = createRun(11);
+  const hp0 = r.maxHp, lv0 = r.level;
+  grantXp(r, 9999);
+  ok(r.level > lv0, 'XP levels you up');
+  ok(r.maxHp > hp0, 'leveling raises max HP');
+  ok(r.level <= 12, 'level is capped at 12');
+}
+
+console.log('— evolution & upgrades (M3) —');
+{
+  const r = createRun(12);
+  ok(!needsEvolution(r), 'no evolution at level 1');
+  r.level = 6;
+  ok(needsEvolution(r), 'evolution is offered at Lv 6 in the base form');
+  const offer = evolutionOffer(r);
+  ok(offer.length === 2 && offer.every(f => f.cryptid === 'snig'), 'the offer is 2 SNIG directions');
+  const key = Object.keys(FORMS).find(k => FORMS[k] === offer[0]);
+  ok(evolve(r, key) && r.form === key && !FORMS[r.form].base, 'evolving swaps to a non-base essence form');
+  ok(!needsEvolution(r), 'no second evolution once evolved');
+}
+{
+  const r = createRun(12);
+  r.level = 6;
+  const o = evolutionOffer(r);
+  evolve(r, Object.keys(FORMS).find(k => FORMS[k] === o[0]));
+  ok(!needsAttune(r), 'no attunement before Lv 10');
+  r.level = 10;
+  ok(needsAttune(r), 'attunement is offered at Lv 10');
+  const sig = FORMS[r.form].kit[0];
+  attune(r);
+  ok(r.attuned && (r.moveTiers[sig] || 0) >= 1, 'attunement tiers up the signature move');
+  ok(!needsAttune(r), 'attunement happens only once');
+}
+{
+  const r = createRun(13);
+  const off = upgradeOffer(r);
+  ok(off.length >= 1 && off.length <= 2, 'a mission offers 1-2 known moves to upgrade');
+  applyUpgrade(r, off[0].id);
+  ok(r.moveTiers[off[0].id] === 1, 'applying an upgrade raises that move to tier 1');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

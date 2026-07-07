@@ -731,6 +731,7 @@ const coach = { on: false, i: 0, startX: 0, holdT: 0, done: {} };
 function startCoach() {
   coach.on = true; coach.i = 0; coach.holdT = 0;
   coach.startX = world.player.x; coach.done = {};
+  meta.coachDone = true; saveAll();   // one-and-done: never re-arm on a later mission
   showCoach();
 }
 function showCoach() {

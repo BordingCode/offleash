@@ -1,5 +1,5 @@
 // OFF-LEASH service worker — network-first, cache fallback. Bump CACHE on EVERY release.
-const CACHE = 'offleash-v5';
+const CACHE = 'offleash-v6';
 const SHELL = [
   './',
   'index.html',
