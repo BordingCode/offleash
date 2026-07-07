@@ -3,6 +3,7 @@
 // Falls back to chunky colored shapes for any sprite not yet authored.
 import { WORLD_W, WORLD_H } from '../engine/canvas.js';
 import { GROUND_Y, ATTACKS, BESTIARY, KIT } from './world.js';
+import { FORMS } from '../data/forms.js';
 import { FX, drawFX } from '../engine/fx.js';
 import { TAU } from '../engine/vec.js';
 
@@ -137,6 +138,47 @@ export function draw(view, w, S) {
     ctx.fill();
   }
 
+  // ---- move fields: snares, caltrops, vortices ----
+  const ZONE_COL = { snare: '232,200,74', caltrops: '217,108,58', vortex: '61,106,148', rubble: '119,106,133' };
+  for (const z of w.zones) {
+    const col = ZONE_COL[z.type] || '150,150,150';
+    const a = Math.min(0.5, z.t * 0.5);
+    ctx.fillStyle = `rgba(${col},${a * 0.35})`;
+    ctx.beginPath(); ctx.ellipse(z.x, GROUND_Y + 2, z.r, 12, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = `rgba(${col},${a})`;
+    ctx.lineWidth = 2;
+    if (z.type === 'snare') {
+      for (let i = 0; i < 5; i++) {
+        const zx = z.x + Math.sin(w.t * 9 + i * 2.3) * z.r * 0.7;
+        ctx.beginPath(); ctx.moveTo(zx, GROUND_Y); ctx.lineTo(zx + 5, GROUND_Y - 10 - (i % 3) * 4); ctx.stroke();
+      }
+    } else if (z.type === 'caltrops') {
+      ctx.fillStyle = `rgba(${col},${a})`;
+      for (let i = 0; i < 7; i++) {
+        const zx = z.x - z.r * 0.8 + (i / 6) * z.r * 1.6;
+        ctx.beginPath(); ctx.moveTo(zx - 4, GROUND_Y); ctx.lineTo(zx, GROUND_Y - 9); ctx.lineTo(zx + 4, GROUND_Y); ctx.fill();
+      }
+    } else if (z.type === 'vortex') {
+      ctx.beginPath(); ctx.ellipse(z.x, GROUND_Y - 6, z.r * 0.5 + Math.sin(w.t * 6) * 8, 10, 0, 0, TAU); ctx.stroke();
+    }
+  }
+  // glass wards
+  for (const pane of w.panes) {
+    ctx.fillStyle = `rgba(159,196,232,${Math.min(0.3, pane.t * 0.3)})`;
+    ctx.fillRect(pane.x - pane.w / 2, GROUND_Y - 90, pane.w, 90);
+    ctx.strokeStyle = 'rgba(216,219,242,0.6)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(pane.x - pane.w / 2, GROUND_Y - 90, pane.w, 90);
+  }
+  // litter decoy
+  if (w.decoy) {
+    ctx.fillStyle = '#4a5d3a';
+    ctx.beginPath(); ctx.ellipse(w.decoy.x, GROUND_Y - 12, 16, 14, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#1b1523'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#b9d48b';
+    ctx.fillRect(w.decoy.x - 3, GROUND_Y - 30, 6, 6);
+  }
+
   // ---- sabotage pylons ----
   for (const py of w.pylons) {
     if (py.hp <= 0) {
@@ -226,6 +268,27 @@ export function draw(view, w, S) {
       ctx.fillText('!', f.x, by);
     }
 
+    // status pips
+    if (f.asleepT > 0) {
+      ctx.font = '700 14px sans-serif';
+      ctx.fillStyle = '#d8dbf2';
+      ctx.fillText('z', f.x + 12, f.y - f.h - 8 + Math.sin(w.t * 3) * 3);
+      ctx.fillText('Z', f.x + 20, f.y - f.h - 16 + Math.sin(w.t * 3 + 1) * 3);
+    }
+    if (f.paralyzedT > 0) {
+      ctx.fillStyle = '#e8c84a';
+      ctx.fillRect(f.x - 10 + Math.sin(w.t * 20) * 6, f.y - f.h - 6, 4, 4);
+    }
+    if (f.burr) {
+      ctx.fillStyle = '#7c9a5a';
+      ctx.beginPath(); ctx.arc(f.x - f.w / 2 + 4, f.y - f.h + 6, 4, 0, TAU); ctx.fill();
+    }
+    if (f.ariaT > 0) {
+      ctx.font = '700 13px sans-serif';
+      ctx.fillStyle = f.ariaTag ? '#e05fd0' : '#8d93c8';
+      ctx.fillText('♪', f.x - 14, f.y - f.h - 10);
+    }
+
     // hp bar (only when damaged)
     if (f.hp < f.maxHp) {
       const bw = 46;
@@ -243,7 +306,15 @@ export function draw(view, w, S) {
   ctx.ellipse(p.x, GROUND_Y + 5, 20 * (1 - Math.min(0.5, (GROUND_Y - p.y) / 500)), 6, 0, 0, TAU);
   ctx.fill();
 
-  const snig = S.snig;
+  const FDEF = FORMS[p.form] || FORMS.snig;
+  const snig = S[FDEF.sprite] || S[p.species] || S.snig;
+  // attunement glow
+  if (w.attuned) {
+    const EC = { static: '232,200,74', rain: '61,106,148', rust: '217,108,58', moon: '141,147,200' };
+    const col = EC[FDEF.essence] || '62,230,210';
+    ctx.fillStyle = `rgba(${col},${0.12 + Math.sin(w.t * 4) * 0.05})`;
+    ctx.beginPath(); ctx.ellipse(p.x, p.y - p.h / 2, 40, 50, 0, 0, TAU); ctx.fill();
+  }
   const blink = p.iframes > 0 && p.dashT <= 0 && Math.floor(p.iframes * 14) % 2 === 0;
   if (!blink) {
     if (snig) {

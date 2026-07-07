@@ -2,25 +2,85 @@
 // clear 3 of 5 to draw out the act boss. Pure logic — no DOM.
 import { mulberry32 } from './world.js';
 import { WAVES, ARENAS, MISSION_TYPES, ACT_BOSSES } from '../data/missions.js';
+import { FORMS, formsFor, EVOLVE_LEVEL, ATTUNE_LEVEL } from '../data/forms.js';
+import { MOVES } from '../data/moves.js';
 
 export const MISSIONS_PER_ACT = 5;
 export const CLEAR_TO_BOSS = 3;
 
-export function createRun(seed) {
+export function createRun(seed, starter = 'snig') {
   const run = {
     seed,
+    starter,
+    form: starter,       // current form id (base until the Lv-6 evolution)
+    moveTiers: {},       // moveId -> earned tier (persists across evolution)
+    attuned: false,      // the Lv-10 attunement
     act: 1,
     board: [],
-    cleared: [],        // mission ids cleared this act
-    bossDown: [],       // acts whose boss has fallen
+    cleared: [],
+    bossDown: [],
     xp: 0, level: 1,
     essence: { static: 0, rain: 0, rust: 0, moon: 0 },
-    hp: 100, maxHp: 100,
+    hp: FORMS[starter].stats.hp, maxHp: FORMS[starter].stats.hp,
     missionsDone: 0,
-    atMission: null,    // mission id if the app closed mid-mission (resume at its start)
+    atMission: null,
   };
   run.board = genBoard(run);
   return run;
+}
+
+// max HP = the form's base + level growth
+export function runMaxHp(run) {
+  return Math.round(FORMS[run.form].stats.hp + 6 * (run.level - 1));
+}
+
+// ---------- evolution (Lv 6): offer directions weighted by gathered essence ----------
+export const needsEvolution = (run) => run.level >= EVOLVE_LEVEL && FORMS[run.form].base;
+export const needsAttune = (run) => run.level >= ATTUNE_LEVEL && !FORMS[run.form].base && !run.attuned;
+
+export function evolutionOffer(run, choices = 2) {
+  const dirs = formsFor(run.starter);
+  // weight = essence gathered in that direction; ties keep a stable order via seed
+  const rng = mulberry32(run.seed * 7 + 5);
+  const jitter = new Map(dirs.map((f) => [f.essence, rng() * 0.5]));
+  return [...dirs]
+    .sort((a, b) => (run.essence[b.essence] + jitter.get(b.essence)) - (run.essence[a.essence] + jitter.get(a.essence)))
+    .slice(0, choices);
+}
+
+export function evolve(run, formId) {
+  const F = FORMS[formId];
+  if (!F || F.cryptid !== run.starter || F.base) return false;
+  const frac = run.hp / run.maxHp;
+  run.form = formId;
+  run.maxHp = runMaxHp(run);
+  run.hp = Math.max(1, Math.round(run.maxHp * frac));
+  return true;
+}
+
+// the Lv-10 attunement: signature (first kit slot) move jumps a tier + a glow
+export function attune(run) {
+  const sig = FORMS[run.form].kit[0];
+  run.moveTiers[sig] = Math.min(2, (run.moveTiers[sig] || 0) + 1);
+  run.attuned = true;
+  return MOVES[sig].name;
+}
+
+// ---------- post-mission upgrade offer: tier-up 1 of 2 KNOWN moves ----------
+export function upgradeOffer(run) {
+  const rng = mulberry32(run.seed * 13 + run.missionsDone * 71);
+  const known = FORMS[run.form].kit.filter((id) => (run.moveTiers[id] || 0) < 2);
+  if (!known.length) return [];
+  const picks = [];
+  const pool = [...known];
+  while (picks.length < 2 && pool.length) {
+    picks.push(pool.splice((rng() * pool.length) | 0, 1)[0]);
+  }
+  return picks.map((id) => ({ id, name: MOVES[id].name, from: run.moveTiers[id] || 0 }));
+}
+
+export function applyUpgrade(run, moveId) {
+  run.moveTiers[moveId] = Math.min(2, (run.moveTiers[moveId] || 0) + 1);
 }
 
 // deterministic per act: seed + act pick types, arenas, waves, danger
@@ -89,7 +149,6 @@ export function completeBoss(run) {
   return 'next';
 }
 
-// xp: levels raise max HP a touch; the Lv-6 evolution offer arrives in M3
 export function grantXp(run, amt) {
   run.xp += amt;
   const need = () => 40 + 30 * (run.level - 1);
@@ -97,7 +156,7 @@ export function grantXp(run, amt) {
   while (run.xp >= need() && run.level < 12) {
     run.xp -= need();
     run.level++;
-    run.maxHp += 6;
+    run.maxHp = runMaxHp(run);
     run.hp = Math.min(run.maxHp, run.hp + 12);
     leveled = true;
   }

@@ -1,8 +1,12 @@
 // OFF-LEASH — pure combat sim. No DOM, no canvas, no audio, no Math.random.
-// Side view: x = across, y = height of feet above nothing (y grows DOWN, ground
-// at GROUND_Y). One flat plane + jumps; Smash-lite juggles. Everything lethal
-// telegraphs. Deterministic: seeded rng only; events[] drives all feedback.
+// Side view: x = across, y = feet height (y grows down, ground at GROUND_Y).
+// Flat plane + jumps; Smash-lite juggles. Everything lethal telegraphs.
+// Deterministic: seeded rng only; events[] drives all feedback.
+// M3: the full 43-move pool (stances, fields, marks, trades — no plain
+// projectiles) + the 20-form system with essence evolution.
 import { clamp, sign } from '../engine/vec.js';
+import { MOVES } from '../data/moves.js';
+import { FORMS } from '../data/forms.js';
 
 export const GROUND_Y = 460;
 export const GRAV = 2200;
@@ -10,10 +14,9 @@ export const MOVE_SPD = 300;
 const JUMP_VY = -780;
 const DJUMP_VY = -680;
 const DIVE_VY = 1400;
-const BUFFER = 0.1;   // input buffer window (s)
-const COYOTE = 0.08;  // grace to jump after leaving ground
+const BUFFER = 0.1;
+const COYOTE = 0.08;
 
-// seeded rng — mulberry32 (KB recipe); the ONLY randomness in the sim
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -28,7 +31,6 @@ const rectsHit = (ax, ay, aw, ah, bx, by, bw, bh) =>
   ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 
 // ---------- player attack data (the A-grammar) ----------
-// hb offsets are from the entity's feet point, facing right (mirrored on left)
 export const ATTACKS = {
   c1: { startup: 0.07, active: 0.10, recovery: 0.12, hb: { ox: 18, oy: -44, w: 44, h: 34 }, dmg: 8, kb: { vx: 120, vy: 0 }, hitstop: 0.04, next: 'c2', cancelFrom: 0.14, anim: 'atk0' },
   c2: { startup: 0.06, active: 0.10, recovery: 0.12, hb: { ox: 20, oy: -46, w: 46, h: 36 }, dmg: 9, kb: { vx: 150, vy: 0 }, hitstop: 0.045, next: 'c3', cancelFrom: 0.14, anim: 'atk1' },
@@ -38,43 +40,78 @@ export const ATTACKS = {
   divehit: { startup: 0, active: 0.10, recovery: 0.18, hb: { ox: -40, oy: -20, w: 80, h: 30 }, dmg: 13, kb: { vx: 160, vy: -300 }, hitstop: 0.09, launch: true, anim: 'air' },
 };
 
-// ---------- SNIG base kit (M1 — the full 43-move pool lands in M3) ----------
-export const KIT = [
-  { id: 'umbrella', name: 'Umbrella Guard', cd: 4, essence: 'rain' },
-  { id: 'cheapshot', name: 'Cheap Shot', cd: 6, essence: 'static' },
-  { id: 'rupture', name: 'Mains Rupture', cd: 9, essence: 'rust' },
-];
+// legacy export (M1 tests/hud referenced it) — SNIG's base kit ids
+export const KIT = FORMS.snig.kit.map((id) => ({ id, name: MOVES[id].name, cd: MOVES[id].cd }));
 
-// ---------- bestiary (M1 slice) ----------
+// ---------- bestiary (M4 grows this) ----------
 export const BESTIARY = {
   skitterlin: {
     name: 'Skitterlin', hp: 18, dmg: 6, w: 30, h: 26, walk: 150,
     tell: 0.3, attackT: 0.28, attackV: 420, recover: 0.7, essence: 'static',
-    hb: { ox: 4, oy: -22, w: 30, h: 22 },
   },
   growler: {
     name: 'Growler', hp: 55, dmg: 12, w: 44, h: 38, walk: 105,
     tell: 0.55, attackT: 0.34, attackV: 640, recover: 0.95, essence: 'rust',
-    hb: { ox: 6, oy: -34, w: 44, h: 32 },
   },
 };
 
 export function mkPlayer() {
   return {
-    kind: 'player', species: 'snig',
+    kind: 'player', species: 'snig', form: 'snig',
     x: 200, y: GROUND_Y, vx: 0, vy: 0, w: 34, h: 40,
-    facing: 1, onGround: true, jumps: 2, coyoteT: 0,
+    facing: 1, onGround: true, jumps: 2, maxJumps: 2, coyoteT: 0,
     hp: 100, maxHp: 100,
+    spdMult: 1, dmgMult: 1,
     state: 'idle', animT: 0,
-    atk: null,               // {def, key, t, struck:Set}
+    atk: null,
     dashT: 0, dashDir: 1, dashCd: 0,
     diving: false,
     hurtT: 0, iframes: 0,
-    guardT: 0, guardCd: 0, guardLastT: -99, // Umbrella Guard
+    // kit: three move instances {id, tier}
+    moves: FORMS.snig.kit.map((id) => ({ id, tier: 0 })),
     cds: [0, 0, 0],
-    buffer: [],              // [{action, t}]
+    // stances & buffs (all timers in seconds; 0 = off)
+    guardT: 0, guardLastT: -99, guardTier: 0,
+    parryT: 0, parryTier: 0,
+    veilT: 0,
+    napT: 0, napHeal: 0,
+    bide: null,        // {t, stored, mult, launch}
+    focus: null,       // {t, dmg, aoe, lateArmor}
+    endureT: 0, endureSurge: false, endured: false,
+    overclockT: 0, overclockExt: 0,
+    livewireT: 0, livewireDmg: 0, livewireChip: 0,
+    siphonT: 0, siphonSteal: 0,
+    whetHits: 0, whetMult: 1,
+    platingT: 0, platDr: 0, platSlow: 0, platThorns: false,
+    furyOn: false, furyStacks: 0, furyPer: 0.1, furyMax: 5,
+    zgT: 0, zgAirDmg: 1, zgFloat: false,
+    cbT: 0, cbCdr: 0, cbTrickle: 0,
+    aiT: 0,            // afterimage
+    pactMult: 1,
+    stacks: 0, stackMax: 3,
+    digT: 0, rollT: 0, rollDmg: 0, rollRamp: 0, rollHits: 0,
+    hopT: 0, hopDef: null,
+    buffer: [],
     pdodges: 0, combo: 0, comboT: 0,
+    hitSinceAtk: false, // Cold Receipt: were we hit since our last attack?
   };
+}
+
+export function applyForm(w, formId) {
+  const p = w.player;
+  const F = FORMS[formId];
+  if (!F) return;
+  const hpFrac = p.hp / p.maxHp;
+  p.form = formId;
+  p.species = F.cryptid;
+  p.maxHp = Math.round(F.stats.hp * (1 + (w.levelHpBonus || 0)));
+  p.hp = Math.max(1, Math.round(p.maxHp * hpFrac));
+  p.spdMult = F.stats.spd;
+  p.dmgMult = F.stats.dmg;
+  p.maxJumps = F.stats.jumps || 2;
+  p.moves = F.kit.map((id) => ({ id, tier: 0 }));
+  p.cds = [0, 0, 0];
+  w.events.push({ t: 'form', form: formId, name: F.name });
 }
 
 function mkFoe(w, species, x) {
@@ -85,50 +122,55 @@ function mkFoe(w, species, x) {
     facing: -1, onGround: true,
     hp: B.hp, maxHp: B.hp,
     state: 'idle', stateT: 0.4 + w.rng() * 0.6, animT: w.rng() * 10,
-    attackHit: false, struck: false,
-    hitFlash: 0, juggle: 0,
+    attackHit: false, hitFlash: 0, juggle: 0,
+    // statuses
+    paralyzedT: 0, asleepT: 0, sleepMarkT: 0,
+    vulnT: 0, vulnMult: 1,
+    burr: null, ariaT: 0, ariaTag: false,
+    encoreN: 0, heldT: 0,
+    slowedT: 0,
   };
   w.foes.push(f);
   return f;
 }
 
 export function createWorld(seed = 1) {
-  const w = {
+  return {
     t: 0,
     rng: mulberry32(seed),
     arena: { w: 1280, name: 'the practice yard' },
     cam: { x: 0 },
     player: mkPlayer(),
     foes: [],
-    pylons: [],              // sabotage objectives {x, hp, maxHp}
-    pickups: [],             // {x, y, heal}
-    mission: null,           // {def, wave, done}
-    boss: null,              // boss entity ref while an act boss lives
+    pylons: [],
+    pickups: [],
+    zones: [],       // {type:'snare'|'caltrops'|'rubble', x, r, t, ...}
+    panes: [],       // Glass Ward {x, w, t, shock}
+    decoy: null,     // {x, hp, t, boom}
+    curfewT: 0, curfewSlow: 1,
+    mission: null,
+    boss: null,
     essenceGained: { static: 0, rain: 0, rust: 0, moon: 0 },
     events: [],
     slowmoT: 0,
     msg: null, msgT: 0,
     over: false, overCause: null,
     paused: false,
+    levelHpBonus: 0,
   };
-  return w;
 }
 
 // ---------- missions ----------
 export function startMission(w, def) {
   w.mission = { def, wave: 0, done: false };
   w.arena = { w: def.arenaW, name: def.arena };
-  w.foes.length = 0;
-  w.pylons.length = 0;
-  w.pickups.length = 0;
-  w.player.x = 120;
-  w.player.y = GROUND_Y;
-  w.player.combo = 0;
+  w.foes.length = 0; w.pylons.length = 0; w.pickups.length = 0;
+  w.zones.length = 0; w.panes.length = 0; w.decoy = null;
+  w.player.x = 120; w.player.y = GROUND_Y; w.player.combo = 0;
   w.cam.x = 0;
   if (def.pylons > 0) {
     for (let i = 0; i < def.pylons; i++) {
-      const px = def.arenaW * (0.45 + (i * 0.22));
-      w.pylons.push({ x: px, hp: 60, maxHp: 60 });
+      w.pylons.push({ x: def.arenaW * (0.45 + i * 0.22), hp: 60, maxHp: 60 });
     }
   }
   spawnWave(w);
@@ -138,24 +180,19 @@ export function startMission(w, def) {
 function spawnWave(w) {
   const def = w.mission.def;
   const wave = def.waves[w.mission.wave % def.waves.length];
-  for (const e of wave) {
-    mkFoe(w, e.s, clamp(def.arenaW * e.x, 60, def.arenaW - 60));
-  }
+  for (const e of wave) mkFoe(w, e.s, clamp(def.arenaW * e.x, 60, def.arenaW - 60));
   w.events.push({ t: 'wave', n: w.mission.wave + 1 });
 }
 
 export function startBoss(w, bossDef) {
   w.mission = null;
   w.arena = { w: 1200, name: bossDef.name };
-  w.foes.length = 0;
-  w.pylons.length = 0;
-  w.pickups.length = 0;
-  w.player.x = 140;
-  w.player.y = GROUND_Y;
+  w.foes.length = 0; w.pylons.length = 0; w.pickups.length = 0;
+  w.zones.length = 0; w.panes.length = 0; w.decoy = null;
+  w.player.x = 140; w.player.y = GROUND_Y;
   w.cam.x = 0;
   const f = mkFoe(w, bossDef.species, 900);
-  // FLAT authored stats — never scaled off anything
-  f.hp = f.maxHp = bossDef.hp;
+  f.hp = f.maxHp = bossDef.hp;   // FLAT authored — never scaled
   f.boss = bossDef;
   f.scale = bossDef.scale;
   f.w *= bossDef.scale; f.h *= bossDef.scale;
@@ -165,7 +202,6 @@ export function startBoss(w, bossDef) {
   w.events.push({ t: 'boss_start', name: bossDef.name });
 }
 
-// M1 practice-yard spawner: keeps a small crowd alive so feel can be tested forever
 export function seedPractice(w) {
   mkFoe(w, 'growler', 700);
   mkFoe(w, 'skitterlin', 950);
@@ -176,80 +212,132 @@ function toast(w, text, dur = 2.2) { w.msg = text; w.msgT = dur; }
 
 // ---------- hit resolution ----------
 function playerHitbox(p, def) {
-  const fx = p.facing;
-  const x = fx > 0 ? p.x + def.hb.ox : p.x - def.hb.ox - def.hb.w;
+  const x = p.facing > 0 ? p.x + def.hb.ox : p.x - def.hb.ox - def.hb.w;
   return [x, p.y + def.hb.oy, def.hb.w, def.hb.h];
 }
+const foeHurtbox = (f) => [f.x - f.w / 2, f.y - f.h, f.w, f.h];
+const playerHurtbox = (p) => [p.x - p.w / 2, p.y - p.h, p.w, p.h];
 
-function foeHurtbox(f) {
-  return [f.x - f.w / 2, f.y - f.h, f.w, f.h];
-}
-function playerHurtbox(p) {
-  return [p.x - p.w / 2, p.y - p.h, p.w, p.h];
-}
-
-function damageFoe(w, f, def, mul = 1) {
+// outgoing damage multiplier (consumes whetstone hits)
+function outMult(w) {
   const p = w.player;
-  const dmg = Math.round(def.dmg * mul);
+  let m = p.dmgMult * p.pactMult;
+  if (p.whetHits > 0) { m *= p.whetMult; p.whetHits--; if (p.whetHits === 0) p.whetMult = 1; }
+  if (p.furyOn) m *= 1 + p.furyStacks * p.furyPer;
+  if (!p.onGround && p.zgT > 0) m *= p.zgAirDmg;
+  return m;
+}
+
+function damageFoe(w, f, def, mul = 1, opts = {}) {
+  const p = w.player;
+  let m = mul * (opts.raw ? 1 : outMult(w));
+  if (f.vulnT > 0) m *= f.vulnMult;
+  if (f.asleepT > 0) { if (f.sleepCrit) m *= 2; f.asleepT = 0; } // damage wakes
+  const dmg = Math.max(1, Math.round(def.dmg * m));
   f.hp -= dmg;
   f.hitFlash = 0.09;
   const dir = sign(f.x - p.x) || p.facing;
-  // juggle decay: each air hit scales knockback down so infinites self-terminate
-  const jm = 1 / (1 + 0.25 * f.juggle);
-  f.vx = def.kb.vx * dir * jm;
-  if (def.kb.vy) f.vy = def.kb.vy * jm;
-  if (def.launch || (def.kb.vy && def.kb.vy < -200)) {
+  const jm = 1 / (1 + 0.25 * f.juggle) * (w.player.zgFloat ? 0.7 : 1);
+  f.vx = (def.kb?.vx || 0) * dir * jm;
+  if (def.kb?.vy) f.vy = def.kb.vy * jm * (p.zgFloat ? 0.75 : 1);
+  if (def.launch || (def.kb?.vy && def.kb.vy < -200)) {
     f.state = 'launched'; f.onGround = false; f.juggle++;
   } else if (f.onGround && f.state !== 'launched') {
-    if (!f.onGround) f.juggle++;
     f.state = 'hurt'; f.stateT = 0.22;
   }
   if (!f.onGround) f.juggle++;
-  w.events.push({ t: 'hit', x: f.x, y: f.y - f.h / 2, dmg, big: dmg >= 12, hitstop: def.hitstop });
-  if (p.atk) p.atk.hit = true; // hit-confirm: unlocks jump-cancel for juggles
+  // lifesteal + aria tagging
+  if (p.siphonT > 0 && !opts.noSteal) {
+    p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(dmg * p.siphonSteal)));
+  }
+  if (f.ariaT > 0) f.ariaTag = true;
+  w.events.push({ t: 'hit', x: f.x, y: f.y - f.h / 2, dmg, big: dmg >= 12, hitstop: def.hitstop || 0.04 });
+  if (p.atk) p.atk.hit = true;
   p.combo++; p.comboT = 1.4;
-  if (f.hp <= 0) {
-    w.events.push({ t: 'foe_down', x: f.x, y: f.y - f.h / 2, species: f.species, combo: p.combo });
-    f.dead = true;
-    if (f.boss) {
-      w.boss = null;
-      w.events.push({ t: 'boss_down', name: f.boss.name });
-    } else {
-      const B = BESTIARY[f.species];
-      w.essenceGained[B.essence] = (w.essenceGained[B.essence] || 0) + 1;
-      w.events.push({ t: 'xp', amt: f.species === 'growler' ? 14 : 6 });
-      w.events.push({ t: 'essence', kind: B.essence, x: f.x, y: f.y - 30 });
-      // the streets provide: an occasional dented food can
-      if (w.rng() < 0.22) w.pickups.push({ x: f.x, y: GROUND_Y, heal: 12 });
+  if (f.hp <= 0) killFoe(w, f);
+}
+
+function killFoe(w, f) {
+  const p = w.player;
+  w.events.push({ t: 'foe_down', x: f.x, y: f.y - f.h / 2, species: f.species, combo: p.combo });
+  f.dead = true;
+  if (f.boss) {
+    w.boss = null;
+    w.events.push({ t: 'boss_down', name: f.boss.name });
+  } else {
+    const B = BESTIARY[f.species];
+    w.essenceGained[B.essence] = (w.essenceGained[B.essence] || 0) + 1;
+    w.events.push({ t: 'xp', amt: f.species === 'growler' ? 14 : 6 });
+    w.events.push({ t: 'essence', kind: B.essence, x: f.x, y: f.y - 30 });
+    if (f.burr && f.burr.hops) {
+      const next = w.foes.find((o) => !o.dead && o !== f);
+      if (next) next.burr = f.burr;
     }
+    if (w.rng() < 0.22) w.pickups.push({ x: f.x, y: GROUND_Y, heal: 12 });
   }
 }
 
-// attacks also smash sabotage pylons
-function hitPylons(w, def, hx, hy, hw, hh) {
+function hitPylons(w, def, hx, hy, hw, hh, mul = 1) {
   for (const py of w.pylons) {
     if (py.hp <= 0) continue;
     if (rectsHit(hx, hy, hw, hh, py.x - 18, GROUND_Y - 70, 36, 70)) {
-      py.hp -= def.dmg;
+      py.hp -= Math.round(def.dmg * mul);
       w.events.push({ t: 'pylon_hit', x: py.x, y: GROUND_Y - 40, dmg: def.dmg });
       if (py.hp <= 0) w.events.push({ t: 'pylon_down', x: py.x, y: GROUND_Y - 40 });
     }
   }
 }
 
-function hurtPlayer(w, dmg, fromX) {
+function hurtPlayer(w, dmg, fromX, fromFoe) {
   const p = w.player;
-  if (p.iframes > 0) return false;
-  if (p.guardT > 0) {
+  if (p.iframes > 0 || p.digT > 0) return false;
+  if (p.aiT > 0) { // afterimage: the hit met a decoy image
+    p.aiT = 0;
     w.events.push({ t: 'blocked', x: p.x, y: p.y - 50 });
     return false;
   }
-  p.hp -= dmg;
+  if (p.guardT > 0) {
+    w.events.push({ t: 'blocked', x: p.x, y: p.y - 50 });
+    if (p.guardTier >= 2 && p.guardT < 0.15) { // perfect-timed block refunds
+      for (let i = 0; i < 3; i++) if (p.moves[i].id === 'umbrella') p.cds[i] = 0;
+      w.events.push({ t: 'ability', name: 'Perfect Guard', x: p.x, y: p.y - 66 });
+    }
+    return false;
+  }
+  if (p.parryT > 0 && fromFoe) {
+    // Counter: negate and return
+    const T = MOVES.payback.tiers[p.parryTier];
+    p.parryT = 0;
+    damageFoe(w, fromFoe, { dmg: dmg * T.mult, kb: { vx: 320, vy: -200 }, hitstop: 0.1 }, 1, { raw: true });
+    if (T.heal) p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * T.heal));
+    w.events.push({ t: 'interrupt', x: p.x, y: p.y - 60 });
+    return false;
+  }
+  let final = dmg;
+  if (p.platingT > 0) final = Math.max(1, Math.round(final * (1 - p.platDr)));
+  if (p.bide) { p.bide.stored += final; }
+  if (p.napT > 0) { // interrupted mid-nap: heal only the elapsed fraction
+    const frac = 1 - p.napT / p.napChan;
+    p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * p.napHeal * frac));
+    p.napT = 0;
+    w.events.push({ t: 'ability', name: 'Rudely woken', x: p.x, y: p.y - 60 });
+  }
+  if (p.focus) { p.focus = null; w.events.push({ t: 'ability', name: 'Fizzled!', x: p.x, y: p.y - 60 }); } // Focus Punch rule
+  p.hp -= final;
+  if (p.endureT > 0 && p.hp <= 0) {
+    p.hp = 1;
+    if (!p.endured && p.endureSurge) { p.overclockT = Math.max(p.overclockT, 2); }
+    p.endured = true;
+    w.events.push({ t: 'ability', name: 'Stray’s Grit!', x: p.x, y: p.y - 60 });
+  }
+  if (p.furyOn) p.furyStacks = Math.min(p.furyMax, p.furyStacks + 1);
+  p.hitSinceAtk = true;
   p.iframes = 0.9;
   p.hurtT = 0.3;
   p.combo = 0;
   p.vx = sign(p.x - fromX) * 220;
-  w.events.push({ t: 'player_hurt', x: p.x, y: p.y - 40, dmg });
+  if (p.platThorns && fromFoe) { fromFoe.state = 'hurt'; fromFoe.stateT = 0.3; }
+  w.events.push({ t: 'player_hurt', x: p.x, y: p.y - 40, dmg: final });
   if (p.hp <= 0) {
     p.hp = 0;
     w.over = true;
@@ -259,57 +347,226 @@ function hurtPlayer(w, dmg, fromX) {
   return true;
 }
 
-// ---------- abilities (SNIG base kit) ----------
-function useAbility(w, slot) {
+// ---------- the move engine: 43 verbs, one compact switch ----------
+function nearestFoe(w, filter, range = 400) {
   const p = w.player;
-  const ab = KIT[slot];
-  if (!ab || p.cds[slot] > 0) return;
-  if (ab.id === 'umbrella') {
-    // Protect: blocks EVERYTHING 0.8s; leaning on it (reuse within 6s) doubles the CD
-    p.guardT = 0.8;
-    const rushed = w.t - p.guardLastT < 6;
-    p.guardLastT = w.t;
-    p.cds[slot] = rushed ? ab.cd * 2 : ab.cd;
-    w.events.push({ t: 'ability', name: ab.name, x: p.x, y: p.y - 60 });
-  } else if (ab.id === 'cheapshot') {
-    // Sucker Punch: a lunge-jab that only LANDS on an enemy mid-telegraph
-    p.cds[slot] = ab.cd;
-    p.iframes = Math.max(p.iframes, 0.15);
-    // find the nearest telegraphing foe ahead of us within lunge range
-    let target = null, bd = 280;
-    for (const f of w.foes) {
-      if (f.dead || f.state !== 'tell') continue;
-      const d = Math.abs(f.x - p.x);
-      if (d < bd && sign(f.x - p.x) === p.facing) { bd = d; target = f; }
+  let best = null, bd = range;
+  for (const f of w.foes) {
+    if (f.dead || (filter && !filter(f))) continue;
+    const d = Math.abs(f.x - p.x);
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+const foesNear = (w, x, r) => w.foes.filter((f) => !f.dead && Math.abs(f.x - x) < r);
+
+export function useMove(w, slot) {
+  const p = w.player;
+  const mv = p.moves[slot];
+  if (!mv || p.cds[slot] > 0 || p.hurtT > 0 || p.napT > 0 || p.digT > 0) return;
+  const M = MOVES[mv.id];
+  const T = M.tiers[mv.tier];
+  const setCd = (mul = 1) => { p.cds[slot] = M.cd * mul * (p.cbT > 0 ? 1 - p.cbCdr : 1); };
+  const announce = () => w.events.push({ t: 'ability', name: M.name, x: p.x, y: p.y - 60 });
+  const strike = (dmg, kb, opts) => ({ dmg, kb: kb || { vx: 200, vy: 0 }, hitstop: 0.07, ...opts });
+
+  switch (mv.id) {
+    // -------- STATIC --------
+    case 'blinkstep': {
+      p.x += p.facing * T.dist; p.iframes = Math.max(p.iframes, 0.14);
+      p.x = clamp(p.x, 20, w.arena.w - 20);
+      const f = nearestFoe(w, null, 90);
+      if (f) { damageFoe(w, f, strike(T.dmg * (T.resetBonus && p.combo === 0 ? T.resetBonus : 1))); p.atk = null; }
+      setCd(T.charges ? 0.55 : 1); announce(); break;
     }
-    if (target) {
-      p.x = target.x - p.facing * 44; // the lunge itself
-      target.state = 'hurt'; target.stateT = 0.5;
-      damageFoe(w, target, { dmg: 22, kb: { vx: 260, vy: -180 }, hitstop: 0.1 });
-      w.events.push({ t: 'interrupt', x: target.x, y: target.y - target.h });
-    } else {
-      p.vx = p.facing * 420;
-      p.hurtT = 0.35; // heavy whiff lag — commit to your reads
-    }
-    w.events.push({ t: 'ability', name: ab.name, x: p.x, y: p.y - 60 });
-  } else if (ab.id === 'rupture') {
-    // Earthquake: hits all GROUNDED enemies in a wide radius; whiffs vs airborne
-    p.cds[slot] = ab.cd;
-    p.hurtT = 0.22; // slam commitment
-    for (const f of [...w.foes]) {
-      if (f.dead || !f.onGround) continue;
-      if (Math.abs(f.x - p.x) < 330) {
-        damageFoe(w, f, { dmg: 16, kb: { vx: 120, vy: -420 }, hitstop: 0.08, launch: true });
+    case 'machwire': {
+      const dir = p.facing;
+      for (const f of foesNear(w, p.x + dir * w.arena.w / 2, w.arena.w)) {
+        if (sign(f.x - p.x) === dir) damageFoe(w, f, strike(T.dmg, { vx: 140, vy: -120 }));
       }
+      if (T.trail) w.zones.push({ type: 'snare', x: p.x + dir * 200, r: 180, t: T.trail, stun: 0.6 });
+      p.x = clamp(p.x + dir * 420, 20, w.arena.w - 20);
+      p.iframes = Math.max(p.iframes, 0.2);
+      setCd(); announce(); break;
     }
-    for (const py of w.pylons) {
-      if (py.hp > 0 && Math.abs(py.x - p.x) < 330) {
-        py.hp -= 16;
-        w.events.push({ t: 'pylon_hit', x: py.x, y: GROUND_Y - 40, dmg: 16 });
-        if (py.hp <= 0) w.events.push({ t: 'pylon_down', x: py.x, y: GROUND_Y - 40 });
+    case 'overclock': p.overclockT = T.dur; p.overclockExt = T.extendOnHit || 0; setCd(); announce(); break;
+    case 'staticsnare':
+      w.zones.push({ type: 'snare', x: p.x + p.facing * 60, r: T.r, t: T.dur, stun: T.stun, vuln: T.vuln });
+      setCd(); announce(); break;
+    case 'cheapshot': {
+      const f = nearestFoe(w, (o) => o.state === 'tell' && sign(o.x - p.x) === p.facing, 280);
+      p.iframes = Math.max(p.iframes, 0.15);
+      if (f) {
+        p.x = f.x - p.facing * 44;
+        f.state = 'hurt'; f.stateT = 0.5;
+        damageFoe(w, f, strike(T.dmg, { vx: 260, vy: -180 }, { hitstop: 0.1 }));
+        w.events.push({ t: 'interrupt', x: f.x, y: f.y - f.h });
+        if (T.overclock) p.overclockT = Math.max(p.overclockT, T.overclock);
+      } else { p.vx = p.facing * 420; p.hurtT = T.whiff; }
+      setCd(); announce(); break;
+    }
+    case 'flashbulb':
+      for (const f of foesNear(w, p.x, T.r)) {
+        if (!f.flashed) { f.flashed = true; f.state = 'hurt'; f.stateT = T.flinch; damageFoe(w, f, strike(4, { vx: 60, vy: 0 })); }
       }
+      setCd(); announce(); break;
+    case 'pistonjab': {
+      const f = nearestFoe(w, null, 110);
+      if (f) {
+        p.jabs = (p.jabs || 0) + 1;
+        damageFoe(w, f, strike(T.dmg, T.launch3 && p.jabs % 3 === 0 ? { vx: 60, vy: -560 } : { vx: 80, vy: 0 }, { launch: T.launch3 && p.jabs % 3 === 0 }));
+      }
+      setCd(); announce(); break;
     }
-    w.events.push({ t: 'rupture', x: p.x, y: p.y });
+    case 'jamsignal': {
+      const targets = T.r ? foesNear(w, p.x, T.r + 200).filter((f) => f.state === 'tell') : [nearestFoe(w, (o) => o.state === 'tell', 320)].filter(Boolean);
+      for (const f of targets) {
+        f.state = 'hurt'; f.stateT = T.stag;
+        if (T.lockout) f.jamT = T.lockout;
+        w.events.push({ t: 'interrupt', x: f.x, y: f.y - f.h });
+      }
+      setCd(targets.length ? 1 : 0.4); announce(); break;
+    }
+    case 'ghostwire': {
+      const f = nearestFoe(w, null, 340);
+      if (f) {
+        damageFoe(w, f, strike(T.dmg));
+        p.x = clamp(f.x + sign(f.x - p.x) * 70, 20, w.arena.w - 20);
+        p.facing = -sign(f.x - p.x) || 1;
+        if (T.iframes) p.iframes = Math.max(p.iframes, 0.25);
+        if (T.chainload) p.atk = null;
+      }
+      setCd(); announce(); break;
+    }
+    case 'livewire': p.livewireT = T.dur; p.livewireDmg = T.dmg; p.livewireChip = T.chip; setCd(); announce(); break;
+    case 'blownfuse':
+      for (const f of foesNear(w, p.x, T.r)) damageFoe(w, f, strike(T.dmg, { vx: 340, vy: -320 }, { launch: true, hitstop: 0.1 }));
+      hitPylons(w, { dmg: T.dmg }, p.x - T.r, GROUND_Y - 80, T.r * 2, 90);
+      p.hurtT = T.selfstun;
+      w.events.push({ t: 'rupture', x: p.x, y: p.y });
+      setCd(); announce(); break;
+
+    // -------- RAIN --------
+    case 'payback': p.parryT = T.win; p.parryTier = mv.tier; setCd(); announce(); break;
+    case 'mirrorveil': p.veilT = T.dur; setCd(); announce(); break;
+    case 'umbrella': {
+      p.guardT = T.dur; p.guardTier = mv.tier;
+      const rushed = w.t - p.guardLastT < 6;
+      p.guardLastT = w.t;
+      setCd(rushed ? 2 : 1); announce(); break;
+    }
+    case 'stormnap': p.napT = T.chan; p.napChan = T.chan; p.napHeal = T.heal; p.napTier = mv.tier; setCd(); announce(); break;
+    case 'leechburr': {
+      const f = nearestFoe(w, null, 300);
+      if (f) { f.burr = { drip: T.drip, hops: !!T.hops }; setCd(); announce(); }
+      else setCd(0.3);
+      break;
+    }
+    case 'siphonfang': p.siphonT = T.dur; p.siphonSteal = T.steal; setCd(); announce(); break;
+    case 'litterdecoy':
+      p.hp = Math.max(1, p.hp - Math.round(p.maxHp * T.cost));
+      w.decoy = { x: p.x - p.facing * 40, hp: 30, t: T.dur, boom: T.boom || 0 };
+      p.iframes = Math.max(p.iframes, 1);
+      setCd(); announce(); break;
+    case 'brokenrecord': {
+      const f = nearestFoe(w, null, 320);
+      if (f) { f.encoreN = T.n; if (T.slowed) f.slowedT = 6; setCd(); announce(); }
+      else setCd(0.3);
+      break;
+    }
+    case 'glassward':
+      w.panes.push({ x: p.x + p.facing * 90, w: T.w, t: T.dur, shock: T.shock || 0 });
+      setCd(); announce(); break;
+    case 'vortex': {
+      const cx = p.x + p.facing * 140;
+      w.zones.push({ type: 'vortex', x: cx, r: T.r, t: T.hold, vuln: T.vuln });
+      setCd(); announce(); break;
+    }
+    case 'straysgrit': p.endureT = T.dur; p.endureSurge = !!T.surge; p.endured = false; setCd(); announce(); break;
+    case 'hoardhurl': {
+      if (p.stacks <= 0) { setCd(0.2); break; }
+      const n = p.stacks; p.stacks = 0;
+      for (const f of foesNear(w, p.x, 200)) damageFoe(w, f, strike(T.per * n, T.launch && n >= p.stackMax ? { vx: 120, vy: -520 } : { vx: 260, vy: -80 }, { launch: T.launch && n >= p.stackMax }));
+      setCd(); announce(); break;
+    }
+    case 'cloudburst': p.cbT = T.dur; p.cbCdr = T.cdr; p.cbTrickle = T.trickle; setCd(); announce(); break;
+
+    // -------- RUST --------
+    case 'whetstone': p.napT = 0; p.hurtT = T.chan; p.whetHits = T.hits; p.whetMult = T.mult; setCd(); announce(); break;
+    case 'scrapplating': p.platingT = T.dur; p.platDr = T.dr; p.platSlow = T.slow; p.platThorns = !!T.thorns; setCd(); announce(); break;
+    case 'grudgecoil': p.bide = { t: 2, stored: 0, mult: T.mult, launch: !!T.launch }; setCd(); announce(); break;
+    case 'rustveil':
+      p.furyOn = !p.furyOn;
+      if (!p.furyOn && mv.tier < 2) p.furyStacks = 0;
+      p.furyPer = T.per; p.furyMax = T.max;
+      setCd(0.15); announce(); break;
+    case 'undergrate': p.digT = T.dur; p.digDmg = T.dmg; p.digBreak = !!T.armorbreak; setCd(); announce(); break;
+    case 'rupture':
+      for (const f of foesNear(w, p.x, T.r)) {
+        if (!f.onGround) continue;
+        damageFoe(w, f, strike(T.dmg, { vx: 120, vy: -420 }, { launch: true }));
+        if (T.slow) f.slowedT = 3;
+      }
+      for (const py of w.pylons) {
+        if (py.hp > 0 && Math.abs(py.x - p.x) < T.r) {
+          py.hp -= T.dmg;
+          w.events.push({ t: 'pylon_hit', x: py.x, y: GROUND_Y - 40, dmg: T.dmg });
+          if (py.hp <= 0) w.events.push({ t: 'pylon_down', x: py.x, y: GROUND_Y - 40 });
+        }
+      }
+      if (T.rubble) w.zones.push({ type: 'caltrops', x: p.x + p.facing * 150, r: 100, t: 5, tick: 4 });
+      p.hurtT = 0.22;
+      w.events.push({ t: 'rupture', x: p.x, y: p.y });
+      setCd(); announce(); break;
+    case 'heldbreath': p.focus = { t: T.chan, dmg: T.dmg, aoe: !!T.aoe, lateArmor: !!T.lateArmor }; setCd(); announce(); break;
+    case 'caltrops': {
+      const n = T.patches || 1;
+      for (let i = 0; i < n; i++) w.zones.push({ type: 'caltrops', x: p.x + p.facing * (120 + i * 180), r: T.r, t: T.dur, tick: T.tick });
+      setCd(); announce(); break;
+    }
+    case 'rustscreech':
+      for (const f of foesNear(w, p.x + p.facing * T.r * 0.5, T.r)) { f.vulnT = T.dur; f.vulnMult = T.vuln; }
+      setCd(); announce(); break;
+    case 'junkroll': p.rollT = T.dur; p.rollDmg = T.dmg; p.rollRamp = T.ramp; p.rollHits = 0; p.rollLaunch = !!T.finLaunch; setCd(); announce(); break;
+    case 'coldreceipt': {
+      const doubled = p.hitSinceAtk || (T.alsoPerfect && w.t - (p.lastPerfectT || -99) < 3);
+      const f = nearestFoe(w, null, 130);
+      if (f) damageFoe(w, f, strike(T.dmg * (doubled ? T.mult : 1), { vx: 340, vy: -160 }, { hitstop: doubled ? 0.12 : 0.06 }));
+      p.hitSinceAtk = false;
+      setCd(); announce(); break;
+    }
+
+    // -------- MOON --------
+    case 'zerog': p.zgT = T.dur; p.zgAirDmg = T.airDmg; p.zgFloat = !!T.floatFoes; p.jumps = Math.max(p.jumps, T.jumps); setCd(); announce(); break;
+    case 'moonhop':
+      p.hopT = 0.001; p.hopDef = T;
+      p.vy = -980; p.onGround = false; p.iframes = 0.35;
+      setCd(); announce(); break;
+    case 'curfewbell': w.curfewT = T.dur; w.curfewSlow = T.slow; w.curfewPop = !!T.popcorn; setCd(); announce(); break;
+    case 'lullaby':
+      for (const f of foesNear(w, p.x, T.r)) { f.sleepMarkT = T.delay; f.sleepDur = T.dur; f.sleepCrit = !!T.crit; }
+      setCd(); announce(); break;
+    case 'lastaria':
+      for (const f of w.foes) if (!f.dead) { f.ariaT = T.win; f.ariaTag = false; f.ariaDmg = T.dmg; if (T.slowTag) f.slowedT = T.win; }
+      setCd(); announce(); break;
+
+    // -------- wildcards --------
+    case 'luckypaw': {
+      const ids = Object.keys(MOVES).filter((k) => !MOVES[k].gated && k !== 'luckypaw');
+      const pick = ids[(w.rng() * ids.length) | 0];
+      const saved = p.moves[slot];
+      p.moves[slot] = { id: pick, tier: 1 };
+      p.cds[slot] = 0;
+      useMove(w, slot);
+      p.moves[slot] = saved;
+      p.cds[slot] = MOVES.luckypaw.cd;
+      break;
+    }
+    case 'afterimage': p.aiT = T.dur; setCd(); announce(); break;
+    case 'feralpact':
+      p.hp = Math.max(1, p.hp - Math.round(p.hp * T.cost));
+      p.pactMult = T.mult;
+      setCd(); announce(); break;
   }
 }
 
@@ -317,9 +574,9 @@ function useAbility(w, slot) {
 function startAttack(w, key) {
   const p = w.player;
   p.atk = { def: ATTACKS[key], key, t: 0, struck: new Set() };
+  p.hitSinceAtk = false;
   w.events.push({ t: 'swing', big: key === 'c3' || key === 'launcher' });
 }
-
 function bufferAction(p, action, t) {
   p.buffer.push({ action, t });
   if (p.buffer.length > 8) p.buffer.shift();
@@ -334,39 +591,127 @@ function consume(p, action, now) {
   return false;
 }
 
+function atkSpeed(p) { return p.overclockT > 0 ? 1.4 : 1; }
+function moveSpeed(p) {
+  return MOVE_SPD * p.spdMult * (p.overclockT > 0 ? 1.4 : 1) * (p.platingT > 0 ? 1 - p.platSlow : 1);
+}
+
 function stepPlayer(w, dt, input) {
   const p = w.player;
   p.animT += dt;
   p.iframes = Math.max(0, p.iframes - dt);
   p.hurtT = Math.max(0, p.hurtT - dt);
   p.guardT = Math.max(0, p.guardT - dt);
+  p.parryT = Math.max(0, p.parryT - dt);
+  p.veilT = Math.max(0, p.veilT - dt);
   p.dashCd = Math.max(0, p.dashCd - dt);
+  p.overclockT = Math.max(0, p.overclockT - dt);
+  p.livewireT = Math.max(0, p.livewireT - dt);
+  p.siphonT = Math.max(0, p.siphonT - dt);
+  p.platingT = Math.max(0, p.platingT - dt);
+  p.zgT = Math.max(0, p.zgT - dt);
+  p.aiT = Math.max(0, p.aiT - dt);
+  p.endureT = Math.max(0, p.endureT - dt);
   p.comboT -= dt; if (p.comboT <= 0) p.combo = 0;
   for (let i = 0; i < 3; i++) p.cds[i] = Math.max(0, p.cds[i] - dt);
+  if (p.cbT > 0) { p.cbT -= dt; p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.cbTrickle * dt); }
 
-  // buffer edges (react on press, resolve when legal)
+  // channels
+  if (p.napT > 0) {
+    p.napT -= dt;
+    if (p.napT <= 0) {
+      p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * p.napHeal));
+      if (p.napTier >= 2) { /* also clears debuffs — none yet stick to the player */ }
+      w.events.push({ t: 'heal', amt: Math.round(p.maxHp * p.napHeal), x: p.x, y: p.y - 50 });
+    }
+    return; // fully vulnerable, fully committed
+  }
+  if (p.bide) {
+    p.bide.t -= dt;
+    if (p.bide.t <= 0) {
+      const b = p.bide; p.bide = null;
+      for (const f of foesNear(w, p.x, 220)) {
+        damageFoe(w, f, { dmg: Math.max(6, Math.round(b.stored * b.mult)), kb: { vx: 300, vy: b.launch ? -420 : -100 }, hitstop: 0.1, launch: b.launch }, 1, { raw: true });
+      }
+      w.events.push({ t: 'rupture', x: p.x, y: p.y });
+    }
+  }
+  if (p.focus) {
+    p.focus.t -= dt;
+    if (p.focus.lateArmor && p.focus.t < 0.3) p.iframes = Math.max(p.iframes, 0.05);
+    if (p.focus.t <= 0) {
+      const F = p.focus; p.focus = null;
+      const targets = F.aoe ? foesNear(w, p.x + p.facing * 90, 140) : [nearestFoe(w, null, 130)].filter(Boolean);
+      for (const f of targets) damageFoe(w, f, { dmg: F.dmg, kb: { vx: 420, vy: -260 }, hitstop: 0.14, launch: true });
+      w.events.push({ t: 'rupture', x: p.x, y: p.y });
+    }
+  }
+  if (p.hopT > 0) {
+    // moonhop: hover at apex, slam on landing (handled in stepGravity)
+    if (p.vy > -60 && p.vy < 60 && p.hopDef.hover) { p.vy = Math.min(p.vy, 0); p.hopT += dt; if (p.hopT < p.hopDef.hover) p.vy = -20; }
+  }
+
+  // buffered edges
   if (input.atk) bufferAction(p, 'atk', w.t);
   if (input.jump) bufferAction(p, 'jump', w.t);
   if (input.dash) bufferAction(p, 'dash', w.t);
-  if (input.ab1) useAbility(w, 0);
-  if (input.ab2) useAbility(w, 1);
-  if (input.ab3) useAbility(w, 2);
+  if (input.ab1) useMove(w, 0);
+  if (input.ab2) useMove(w, 1);
+  if (input.ab3) useMove(w, 2);
 
-  // dash-dodge (works during almost anything except hurt)
+  // undergrate: beneath the pavement
+  if (p.digT > 0) {
+    p.digT -= dt;
+    p.x += input.mx * moveSpeed(p) * 1.2 * dt;
+    p.x = clamp(p.x, 20, w.arena.w - 20);
+    if (p.digT <= 0) {
+      for (const f of foesNear(w, p.x, 90)) damageFoe(w, f, { dmg: p.digDmg, kb: { vx: 80, vy: -640 }, hitstop: 0.1, launch: true });
+      w.events.push({ t: 'slam', x: p.x, y: GROUND_Y });
+    }
+    return;
+  }
+  // junk roll
+  if (p.rollT > 0) {
+    p.rollT -= dt;
+    const dir = input.mx !== 0 ? sign(input.mx) : p.facing;
+    p.facing = dir;
+    p.x = clamp(p.x + dir * 520 * dt, 20, w.arena.w - 20);
+    for (const f of foesNear(w, p.x, 50)) {
+      if (!f._rolled || w.t - f._rolled > 0.4) {
+        f._rolled = w.t;
+        p.rollHits++;
+        damageFoe(w, f, { dmg: p.rollDmg * (1 + p.rollRamp * p.rollHits), kb: { vx: 240, vy: -160 }, hitstop: 0.05 });
+      }
+    }
+    if (p.rollT <= 0 && p.rollLaunch) {
+      for (const f of foesNear(w, p.x, 90)) damageFoe(w, f, { dmg: 8, kb: { vx: 120, vy: -520 }, hitstop: 0.08, launch: true });
+    }
+    return;
+  }
+
+  // dash-dodge
   if (p.hurtT <= 0 && p.dashCd <= 0 && consume(p, 'dash', w.t)) {
     p.dashT = 0.28;
     p.dashDir = input.mx !== 0 ? sign(input.mx) : p.facing;
     p.dashCd = 0.55;
-    p.iframes = Math.max(p.iframes, 0.14); // i-frames on the FIRST HALF of the dash
+    p.iframes = Math.max(p.iframes, 0.14);
     p.atk = null; p.diving = false;
     w.events.push({ t: 'dash', x: p.x, y: p.y - 20 });
   }
-
   if (p.dashT > 0) {
     p.dashT -= dt;
     p.vx = p.dashDir * 620;
-    p.x += p.vx * dt;
-    p.x = clamp(p.x, 20, w.arena.w - 20);
+    p.x = clamp(p.x + p.vx * dt, 20, w.arena.w - 20);
+    // Live Wire: damaging dashes
+    if (p.livewireT > 0) {
+      for (const f of foesNear(w, p.x, 46)) {
+        if (!f._lw || w.t - f._lw > 0.3) {
+          f._lw = w.t;
+          damageFoe(w, f, { dmg: p.livewireDmg, kb: { vx: 160, vy: -80 }, hitstop: 0.04 });
+          p.hp = Math.max(1, p.hp - Math.round(p.maxHp * p.livewireChip));
+        }
+      }
+    }
     if (!p.onGround) stepGravity(p, dt, w);
     return;
   }
@@ -382,9 +727,8 @@ function stepPlayer(w, dt, input) {
   // attack in progress
   if (p.atk) {
     const a = p.atk;
-    a.t += dt;
+    a.t += dt * atkSpeed(p);
     const d = a.def;
-    // active window: sweep the hitbox
     if (a.t >= d.startup && a.t <= d.startup + d.active) {
       const [hx, hy, hw, hh] = playerHitbox(p, d);
       for (const f of w.foes) {
@@ -393,27 +737,25 @@ function stepPlayer(w, dt, input) {
         if (rectsHit(hx, hy, hw, hh, fx, fy, fw, fh)) {
           a.struck.add(f);
           damageFoe(w, f, d);
+          if (p.overclockExt) p.overclockT += p.overclockExt;
         }
       }
+      if (w.decoy === null || true) { /* decoys don't block your own hits */ }
       if (!a.pylonsHit) { a.pylonsHit = true; hitPylons(w, d, hx, hy, hw, hh); }
     }
     const total = d.startup + d.active + d.recovery;
-    // jump-cancel on HIT: a connected launcher/chain can cancel into a jump —
-    // this is what makes launch → chase → aerial juggles flow
     if (a.hit && a.t >= d.startup && consume(p, 'jump', w.t)) {
       p.atk = null;
-      if (p.onGround || p.coyoteT > 0) { p.vy = JUMP_VY; p.onGround = false; p.jumps = 1; }
+      if (p.onGround || p.coyoteT > 0) { p.vy = JUMP_VY; p.onGround = false; p.jumps = p.maxJumps - 1; }
       else if (p.jumps > 0) { p.vy = DJUMP_VY; p.jumps--; }
       w.events.push({ t: 'jump', cancel: true });
       return;
     }
-    // chain cancel: buffered attack after cancelFrom rolls into the next hit
     if (d.next && a.t >= (d.cancelFrom || total) && consume(p, 'atk', w.t)) {
       startAttack(w, input.my < -0.5 ? 'launcher' : d.next);
     } else if (a.t >= total) {
       p.atk = null;
     }
-    // air attacks keep falling; ground attacks drift slightly forward
     if (d.air || !p.onGround) stepGravity(p, dt, w);
     else p.x += p.facing * 30 * dt;
     p.x = clamp(p.x, 20, w.arena.w - 20);
@@ -422,16 +764,15 @@ function stepPlayer(w, dt, input) {
   }
 
   // movement
-  p.vx = input.mx * MOVE_SPD;
+  p.vx = input.mx * moveSpeed(p);
   if (input.mx !== 0) p.facing = sign(input.mx);
   p.x += p.vx * dt;
   p.x = clamp(p.x, 20, w.arena.w - 20);
 
-  // jumping (coyote + buffer + double jump)
   const canGroundJump = p.onGround || p.coyoteT > 0;
   if (consume(p, 'jump', w.t)) {
     if (canGroundJump) {
-      p.vy = JUMP_VY; p.onGround = false; p.coyoteT = 0; p.jumps = 1;
+      p.vy = JUMP_VY; p.onGround = false; p.coyoteT = 0; p.jumps = p.maxJumps - 1;
       w.events.push({ t: 'jump' });
     } else if (p.jumps > 0) {
       p.vy = DJUMP_VY; p.jumps--;
@@ -439,13 +780,11 @@ function stepPlayer(w, dt, input) {
     }
   }
 
-  // dive slam: down+attack in the air
   if (!p.onGround && input.my > 0.5 && consume(p, 'atk', w.t)) {
     p.diving = true;
     p.vy = DIVE_VY;
     w.events.push({ t: 'dive' });
   } else if (consume(p, 'atk', w.t)) {
-    // grounded: chain or launcher; airborne: aerial
     if (!p.onGround) startAttack(w, 'aerial');
     else if (input.my < -0.5) startAttack(w, 'launcher');
     else startAttack(w, 'c1');
@@ -456,26 +795,27 @@ function stepPlayer(w, dt, input) {
 }
 
 function stepGravity(p, dt, w) {
-  if (p.onGround) {
-    p.coyoteT = COYOTE;
-    return;
-  }
+  if (p.onGround) { p.coyoteT = COYOTE; return; }
   p.coyoteT = Math.max(0, p.coyoteT - dt);
-  p.vy += GRAV * dt;
+  const g = GRAV * (p.zgT > 0 ? 0.55 : 1);
+  p.vy += g * dt;
   p.y += p.vy * dt;
   if (p.y >= GROUND_Y) {
     p.y = GROUND_Y;
     p.onGround = true;
-    p.jumps = 2;
+    p.jumps = p.maxJumps;
     p.vy = 0;
-    if (p.diving) {
+    if (p.hopT > 0 && p.hopDef) {
+      const T = p.hopDef; p.hopT = 0; p.hopDef = null;
+      for (const f of foesNear(w, p.x, T.r)) damageFoe(w, f, { dmg: T.dmg, kb: { vx: 160, vy: T.launch ? -480 : -220 }, hitstop: 0.1, launch: !!T.launch });
+      w.events.push({ t: 'slam', x: p.x, y: p.y });
+    } else if (p.diving) {
       p.diving = false;
-      // dive slam impact
       const d = ATTACKS.divehit;
       for (const f of w.foes) {
-        if (f.dead) continue;
-        if (Math.abs(f.x - p.x) < 90 && f.onGround) damageFoe(w, f, d);
+        if (!f.dead && Math.abs(f.x - p.x) < 90 && f.onGround) damageFoe(w, f, d);
       }
+      hitPylons(w, d, p.x - 90, GROUND_Y - 80, 180, 90);
       w.events.push({ t: 'slam', x: p.x, y: p.y });
     } else {
       w.events.push({ t: 'land', x: p.x, y: p.y });
@@ -487,12 +827,53 @@ function stepGravity(p, dt, w) {
 function stepFoe(w, f, dt) {
   const p = w.player;
   const B = BESTIARY[f.species];
+  const tempo = (w.curfewT > 0 ? w.curfewSlow : 1) * (f.slowedT > 0 ? 0.6 : 1);
+  const edt = dt * tempo;
   f.animT += dt;
   f.hitFlash = Math.max(0, f.hitFlash - dt);
+  f.slowedT = Math.max(0, f.slowedT - dt);
+  f.vulnT = Math.max(0, f.vulnT - dt);
+  if (f.jamT) f.jamT = Math.max(0, f.jamT - dt);
 
-  // airborne physics (launched/juggled)
+  // marks
+  if (f.burr) {
+    const drain = f.maxHp * f.burr.drip * dt;
+    f.hp -= drain;
+    p.hp = Math.min(p.maxHp, p.hp + drain * 0.9);
+    if (f.hp <= 0) { killFoe(w, f); return; }
+  }
+  if (f.sleepMarkT > 0) {
+    f.sleepMarkT -= dt;
+    if (f.sleepMarkT <= 0) { f.asleepT = f.sleepDur; f.state = 'idle'; w.events.push({ t: 'sleep', x: f.x, y: f.y - f.h }); }
+  }
+  if (f.ariaT > 0) {
+    f.ariaT -= dt;
+    if (f.ariaT <= 0 && f.ariaTag) {
+      damageFoe(w, f, { dmg: f.ariaDmg, kb: { vx: 200, vy: -240 }, hitstop: 0.08, launch: true }, 1, { raw: true });
+      w.events.push({ t: 'interrupt', x: f.x, y: f.y - f.h });
+      if (f.dead) return;
+    }
+  }
+  if (f.asleepT > 0) { f.asleepT -= dt; return; }
+  if (f.paralyzedT > 0) { f.paralyzedT -= dt; return; }
+
+  // zones affecting foes
+  for (const z of w.zones) {
+    if (Math.abs(f.x - z.x) > z.r) continue;
+    if (z.type === 'snare' && f.onGround) { f.paralyzedT = Math.max(f.paralyzedT, z.stun * dt * 8); if (z.vuln) { f.vulnT = 1; f.vulnMult = z.vuln; } }
+    if (z.type === 'caltrops' && f.onGround) {
+      f.slowedT = Math.max(f.slowedT, 0.4);
+      f._calT = (f._calT || 0) + dt;
+      if (f._calT > 1) { f._calT = 0; damageFoe(w, f, { dmg: z.tick, kb: { vx: 0, vy: 0 }, hitstop: 0 }, 1, { raw: true }); if (f.dead) return; }
+    }
+    if (z.type === 'vortex') {
+      f.x += sign(z.x - f.x) * 260 * dt;
+      if (z.vuln) { f.vulnT = 0.5; f.vulnMult = z.vuln; }
+    }
+  }
+
   if (!f.onGround) {
-    f.vy += GRAV * dt;
+    f.vy += GRAV * (p.zgFloat ? 0.6 : 1) * dt;
     f.x += f.vx * dt;
     f.y += f.vy * dt;
     f.x = clamp(f.x, 20, w.arena.w - 20);
@@ -518,24 +899,39 @@ function stepFoe(w, f, dt) {
     return;
   }
 
-  const dx = p.x - f.x;
+  // target: the decoy taunts
+  const tx = w.decoy ? w.decoy.x : p.x;
+  const dx = tx - f.x;
   const dist = Math.abs(dx);
   f.facing = sign(dx) || f.facing;
 
   if (f.state === 'idle') {
-    f.stateT -= dt;
+    f.stateT -= edt;
     if (f.stateT <= 0) f.state = 'approach';
   } else if (f.state === 'approach') {
     if (dist > (f.species === 'growler' ? 190 : 90)) {
-      f.x += sign(dx) * B.walk * dt;
+      f.x += sign(dx) * B.walk * tempo * dt;
+      // glass panes shock melee foes crossing them
+      for (const pane of w.panes) {
+        if (pane.shock && Math.abs(f.x - pane.x) < pane.w / 2 && (!f._paneT || w.t - f._paneT > 1.5)) {
+          f._paneT = w.t;
+          damageFoe(w, f, { dmg: pane.shock, kb: { vx: -140 * f.facing, vy: 0 }, hitstop: 0.03 }, 1, { raw: true });
+          if (f.dead) return;
+        }
+      }
+    } else if (f.encoreN > 0) {
+      f.encoreN--;
+      f.state = 'attack'; f.stateT = B.attackT;
+      f.attackDir = sign(dx) || f.facing;
+      f.attackHit = false;
+      w.events.push({ t: 'foe_attack', species: f.species });
     } else {
-      f.state = 'tell'; f.stateT = f.boss ? f.boss.tell : B.tell;
+      f.state = 'tell'; f.stateT = (f.boss ? f.boss.tell : B.tell) / tempo;
       f.attackHit = false;
       w.events.push({ t: 'tell', x: f.x, y: f.y - f.h - 10, species: f.species });
     }
   } else if (f.state === 'tell') {
-    // THE telegraph — every lethal thing winds up visibly
-    f.stateT -= dt;
+    f.stateT -= edt;
     if (f.stateT <= 0) {
       f.state = 'attack'; f.stateT = B.attackT;
       f.attackDir = sign(dx) || f.facing;
@@ -543,34 +939,38 @@ function stepFoe(w, f, dt) {
     }
   } else if (f.state === 'attack') {
     f.stateT -= dt;
-    f.x += f.attackDir * B.attackV * dt;
+    f.x += f.attackDir * B.attackV * tempo * dt;
     f.x = clamp(f.x, 20, w.arena.w - 20);
-    if (!f.attackHit) {
+    // decoy soaks attacks
+    if (w.decoy && Math.abs(f.x - w.decoy.x) < 40) {
+      w.decoy.hp -= 10;
+      f.state = 'recover'; f.stateT = B.recover;
+    } else if (!f.attackHit) {
       const [fx, fy, fw, fh] = foeHurtbox(f);
       const [px, py, pw, ph] = playerHurtbox(p);
       if (rectsHit(fx, fy, fw, fh, px, py, pw, ph) && p.y > GROUND_Y - 60) {
-        // perfect dodge: their active window met your dash i-frames
         if (p.iframes > 0 && p.dashT > 0) {
           if (!f.pdodged) {
             f.pdodged = true;
             p.pdodges++;
+            p.stacks = Math.min(p.stackMax, p.stacks + 1);
+            p.lastPerfectT = w.t;
             w.slowmoT = 0.35;
             w.events.push({ t: 'pdodge', x: p.x, y: p.y - 60 });
           }
         } else {
           w.lastThreat = f.boss ? `${f.boss.name}` : `${B.name}'s ${f.species === 'growler' ? 'lunge' : 'rush'}`;
-          if (hurtPlayer(w, f.boss ? f.boss.dmg : B.dmg, f.x)) f.attackHit = true;
+          if (hurtPlayer(w, f.boss ? f.boss.dmg : B.dmg, f.x, f)) f.attackHit = true;
         }
       }
     }
     if (f.stateT <= 0) { f.state = 'recover'; f.stateT = B.recover; f.pdodged = false; }
   } else if (f.state === 'recover') {
-    f.stateT -= dt;
+    f.stateT -= edt;
     if (f.stateT <= 0) { f.state = 'idle'; f.stateT = 0.3 + w.rng() * 0.8; }
   }
 }
 
-// ---------- camera ----------
 function stepCamera(w, dt) {
   const target = clamp(w.player.x - 480, 0, Math.max(0, w.arena.w - 960));
   w.cam.x += (target - w.cam.x) * Math.min(1, 10 * dt);
@@ -583,14 +983,25 @@ export function step(w, dt, input) {
   if (w.paused || w.over) return;
   if (w.msgT > 0) { w.msgT -= dt; if (w.msgT <= 0) w.msg = null; }
   w.slowmoT = Math.max(0, w.slowmoT - dt);
+  w.curfewT = Math.max(0, w.curfewT - dt);
+
+  // world objects tick
+  for (let i = w.zones.length - 1; i >= 0; i--) { w.zones[i].t -= dt; if (w.zones[i].t <= 0) w.zones.splice(i, 1); }
+  for (let i = w.panes.length - 1; i >= 0; i--) { w.panes[i].t -= dt; if (w.panes[i].t <= 0) w.panes.splice(i, 1); }
+  if (w.decoy) {
+    w.decoy.t -= dt;
+    if (w.decoy.t <= 0 || w.decoy.hp <= 0) {
+      if (w.decoy.boom) for (const f of foesNear(w, w.decoy.x, 120)) damageFoe(w, f, { dmg: w.decoy.boom, kb: { vx: 220, vy: -220 }, hitstop: 0.06, launch: true }, 1, { raw: true });
+      w.events.push({ t: 'rupture', x: w.decoy.x, y: GROUND_Y });
+      w.decoy = null;
+    }
+  }
 
   stepPlayer(w, dt, input);
   for (const f of w.foes) if (!f.dead) stepFoe(w, f, dt);
-  // deferred removal (never splice mid-frame structures)
   for (let i = w.foes.length - 1; i >= 0; i--) if (w.foes[i].dead) w.foes.splice(i, 1);
   stepCamera(w, dt);
 
-  // heal-can pickups
   const p = w.player;
   for (let i = w.pickups.length - 1; i >= 0; i--) {
     const pk = w.pickups[i];
@@ -601,11 +1012,9 @@ export function step(w, dt, input) {
     }
   }
 
-  // mission director
   if (w.mission && !w.mission.done) {
     const def = w.mission.def;
     if (def.type === 'sabotage') {
-      // waves keep coming while the pylons stand
       if (w.pylons.every((py) => py.hp <= 0)) {
         w.mission.done = true;
         w.events.push({ t: 'mission_complete' });
@@ -624,7 +1033,6 @@ export function step(w, dt, input) {
     }
   }
 
-  // M1 practice yard: keep the crowd topped up
   if (w.practice && w.foes.length < 2) {
     const species = w.rng() < 0.4 ? 'growler' : 'skitterlin';
     const x = w.player.x > w.arena.w / 2 ? 140 : w.arena.w - 140;

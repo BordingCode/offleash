@@ -4,9 +4,11 @@ import { CanvasView } from './engine/canvas.js';
 import { GameLoop } from './engine/loop.js';
 import { FX, updateFX, addTrauma, hitStop, screenFlash, burst, shockwave, floatText } from './engine/fx.js';
 import { buildSprites } from './data/sprites.js';
-import { createWorld, seedPractice, step, startMission, startBoss, KIT } from './game/world.js';
-import { createRun, missionById, clearedCount, bossReady, actBoss, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS } from './game/run.js';
+import { createWorld, seedPractice, step, startMission, startBoss, applyForm, KIT } from './game/world.js';
+import { createRun, missionById, clearedCount, bossReady, actBoss, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS, needsEvolution, needsAttune, evolutionOffer, evolve, attune, upgradeOffer, applyUpgrade } from './game/run.js';
 import { HEAL_AFTER_BOSS, MISSION_TYPES } from './data/missions.js';
+import { FORMS } from './data/forms.js';
+import { MOVES, ESSENCE_ICON as EICON, ESSENCE_STYLE } from './data/moves.js';
 import * as SAVE from './game/save.js';
 import { draw } from './game/render.js';
 import { Input } from './game/input.js';
@@ -106,8 +108,31 @@ function openBoard() {
 }
 
 function syncPlayerFromRun() {
-  world.player.hp = run.hp;
-  world.player.maxHp = run.maxHp;
+  applyForm(world, run.form);
+  const p = world.player;
+  for (const mv of p.moves) mv.tier = run.moveTiers[mv.id] || 0;
+  p.maxHp = run.maxHp;
+  p.hp = Math.min(run.hp, run.maxHp);
+  if (run.attuned) { p.dmgMult *= 1.08; world.attuned = true; }
+  refreshMoveButtons();
+}
+
+// ability buttons show the current kit's move names
+let btnFormKey = '';
+function refreshMoveButtons() {
+  const key = run ? run.form + ':' + JSON.stringify(run.moveTiers) : 'none';
+  if (key === btnFormKey) return;
+  btnFormKey = key;
+  const kit = run ? FORMS[run.form].kit : [];
+  for (let i = 0; i < 3; i++) {
+    const btn = $(`ab${i + 1}btn`);
+    const id = kit[i];
+    if (id) {
+      const tier = (run.moveTiers[id] || 0);
+      btn.querySelector('.lbl').textContent = MOVES[id].name.split(' ')[0].slice(0, 6).toUpperCase();
+      btn.title = `${MOVES[id].name}${tier ? ' T' + (tier + 1) : ''}`;
+    }
+  }
 }
 function syncRunFromWorld() {
   run.hp = Math.max(0, world.player.hp);
@@ -146,10 +171,83 @@ function onMissionComplete() {
   syncRunFromWorld();
   completeMission(run, run.atMission);
   saveAll();
-  setTimeout(() => {
-    showToast('Cleared. Back to the hideout.');
+  setTimeout(() => afterFightRewards('Cleared. Back to the hideout.'), 900);
+}
+
+// the reward chain: attunement -> upgrade offer -> evolution -> board
+function afterFightRewards(toastText) {
+  if (run && needsAttune(run)) {
+    const name = attune(run);
+    showToast(`⭐ ATTUNED — ${name} deepens.`);
+    saveAll();
+  }
+  const offer = run ? upgradeOffer(run) : [];
+  if (offer.length) {
+    openUpgrade(offer, () => {
+      if (run && needsEvolution(run)) openEvolve();
+      else { if (toastText) showToast(toastText); openBoard(); }
+    });
+  } else if (run && needsEvolution(run)) {
+    openEvolve();
+  } else {
+    if (toastText) showToast(toastText);
     openBoard();
-  }, 900);
+  }
+}
+
+function openUpgrade(offer, done) {
+  mode = 'board';
+  const list = $('upchoices');
+  list.innerHTML = '';
+  for (const o of offer) {
+    const card = document.createElement('button');
+    card.className = 'mission';
+    card.innerHTML = `<span class="mtype">${EICON[MOVES[o.id].essence]} UPGRADE</span>
+      <strong>${o.name}</strong>
+      <em>tier ${o.from + 1} → ${o.from + 2}</em>`;
+    card.addEventListener('pointerup', () => {
+      applyUpgrade(run, o.id);
+      saveAll(); sfx.pdodge();
+      $('upgrade').classList.remove('show');
+      done();
+    });
+    list.appendChild(card);
+  }
+  const skip = document.createElement('button');
+  skip.className = 'smallbtn';
+  skip.textContent = 'keep as is';
+  skip.addEventListener('pointerup', () => { $('upgrade').classList.remove('show'); done(); });
+  list.appendChild(skip);
+  $('upgrade').classList.add('show');
+}
+
+function openEvolve() {
+  mode = 'board';
+  const offer = evolutionOffer(run, 2);
+  const list = $('evochoices');
+  list.innerHTML = '';
+  for (const F of offer) {
+    const known = !!meta.gallery[Object.keys(FORMS).find(k => FORMS[k] === F)];
+    const formId = Object.keys(FORMS).find(k => FORMS[k] === F);
+    const card = document.createElement('button');
+    card.className = 'mission evo';
+    card.innerHTML = `<span class="mtype">${EICON[F.essence]} ${F.essence.toUpperCase()} · ${EICON[F.essence]}${run.essence[F.essence]} gathered</span>
+      <strong>${known ? F.name : F.name}</strong>
+      <em>${ESSENCE_STYLE[F.essence]}${F.hint ? ' — ' + (known ? F.hint : '???') : ''}</em>
+      <span class="mdanger">${known ? 'you have been this before' : 'undiscovered form'}</span>`;
+    card.addEventListener('pointerup', () => {
+      evolve(run, formId);
+      meta.gallery[formId] = true;
+      saveAll();
+      sfx.pdodge();
+      screenFlash(0.5, '62,230,210');
+      $('evolve').classList.remove('show');
+      showToast(`You are ${F.name} now.`);
+      openBoard();
+    });
+    list.appendChild(card);
+  }
+  $('evolve').classList.add('show');
 }
 
 function onBossDown() {
@@ -167,10 +265,7 @@ function onBossDown() {
     }, 1200);
   } else {
     saveAll();
-    setTimeout(() => {
-      showToast(`Act ${run.act - 1} cleared — the city opens. Patched up a little.`);
-      openBoard();
-    }, 1200);
+    setTimeout(() => afterFightRewards(`Act ${run.act - 1} cleared — the city opens. Patched up a little.`), 1200);
   }
 }
 

@@ -200,6 +200,12 @@ canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
 .mission.boss { border-color: var(--pink); }
 .mission.boss .mtype { color: var(--pink); }
 .mission.boss.locked { opacity: 0.45; pointer-events: none; }
+.choicerow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; text-align: left; }
+.choicerow .mission { min-width: 200px; max-width: 240px; }
+.mission.evo { border-color: var(--neon); }
+.btn .lbl { font-size: 9px; letter-spacing: 0.5px; }
+.btn.big .lbl { font-size: 30px; }
+#jumpbtn .lbl, #dashbtn .lbl { font-size: 12px; }
 
 /* ---------- rotate hint (this game is LANDSCAPE) ---------- */
 #rotate {
