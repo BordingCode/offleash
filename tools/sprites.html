@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OFF-LEASH sprite preview</title>
+<!-- Dev tool: previews every sprite set registered in js/data/sprites.js.
+     Uses ES modules, so serve over HTTP from the repo root:
+       cd ~/cc/offleash && python3 -m http.server 8000
+     then open http://localhost:8000/tools/sprites.html -->
+<style>
+  body { background: #1b1523; color: #f2ead9; font: 14px/1.5 monospace; margin: 24px; }
+  h1 { font-size: 18px; color: #3ee6d2; }
+  h2 { font-size: 15px; color: #ffb347; margin: 28px 0 8px; border-bottom: 1px solid #3a2f45; padding-bottom: 4px; }
+  .anim { display: inline-block; vertical-align: top; margin: 0 18px 14px 0; }
+  .anim .lbl { color: #8d93c8; font-size: 12px; margin-bottom: 4px; }
+  canvas { image-rendering: pixelated; background: #232b3a; border: 1px solid #3a2f45; margin-right: 6px; }
+  canvas.live { border-color: #3ee6d2; }
+  .err { color: #ff8fa3; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>OFF-LEASH sprite preview</h1>
+<p>Every set registered in <code>buildSprites()</code>. Cyan-bordered canvas = live animation (right-facing / left-facing alternates); the rest are the individual baked frames.</p>
+<div id="root"></div>
+<script type="module">
+  const root = document.getElementById('root');
+  try {
+    const { buildSprites } = await import('../js/data/sprites.js');
+    const S = buildSprites();
+    const SCALE = 5;
+    const livePainters = [];
+
+    const addCanvas = (parent, w, h) => {
+      const c = document.createElement('canvas');
+      c.width = w * SCALE; c.height = h * SCALE;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      parent.appendChild(c);
+      return ctx;
+    };
+
+    for (const [name, set] of Object.entries(S)) {
+      const h2 = document.createElement('h2');
+      h2.textContent = name;
+      root.appendChild(h2);
+
+      if (name === 'props') {
+        const box = document.createElement('div');
+        box.className = 'anim';
+        for (const [prop, img] of Object.entries(set)) {
+          const wrap = document.createElement('span');
+          wrap.className = 'anim';
+          wrap.innerHTML = `<div class="lbl">${prop} ${img.width}x${img.height}</div>`;
+          const ctx = addCanvas(wrap, img.width, img.height);
+          ctx.drawImage(img, 0, 0, img.width * SCALE, img.height * SCALE);
+          box.appendChild(wrap);
+        }
+        root.appendChild(box);
+        continue;
+      }
+
+      for (const [anim, frames] of Object.entries(set)) {
+        const box = document.createElement('div');
+        box.className = 'anim';
+        box.innerHTML = `<div class="lbl">${anim} — ${frames.length} frame(s) ${frames[0].w}x${frames[0].h}</div>`;
+        // live animated preview (cycles frames, alternates right/left facing)
+        const live = addCanvas(box, frames[0].w, frames[0].h);
+        live.canvas.className = 'live';
+        livePainters.push((tick) => {
+          const f = frames[tick % frames.length];
+          const img = Math.floor(tick / (frames.length * 4)) % 2 ? f.imgL : f.img;
+          live.clearRect(0, 0, live.canvas.width, live.canvas.height);
+          live.drawImage(img, 0, 0, f.w * SCALE, f.h * SCALE);
+        });
+        // static frames
+        for (const f of frames) {
+          const ctx = addCanvas(box, f.w, f.h);
+          ctx.drawImage(f.img, 0, 0, f.w * SCALE, f.h * SCALE);
+        }
+        root.appendChild(box);
+      }
+    }
+
+    let tick = 0;
+    setInterval(() => { tick++; for (const p of livePainters) p(tick); }, 250);
+  } catch (e) {
+    root.innerHTML = `<div class="err">Failed to load sprites: ${e}\n\nServe this page over HTTP from the repo root, e.g.\n  cd ~/cc/offleash && python3 -m http.server 8000\nthen open http://localhost:8000/tools/sprites.html</div>`;
+  }
+</script>
+</body>
+</html>
