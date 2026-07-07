@@ -213,6 +213,94 @@ export function draw(view, w, S) {
     ctx.fillRect(pk.x - 6, GROUND_Y - 16 + bob, 12, 4);
   }
 
+  // ---- cages (rescue) ----
+  for (const c of w.cages) {
+    ctx.fillStyle = c.opened ? '#3a2f45' : '#4d4457';
+    ctx.fillRect(c.x - 26, GROUND_Y - 56, 52, 56);
+    ctx.strokeStyle = '#1b1523'; ctx.lineWidth = 3;
+    for (let bx = c.x - 20; bx <= c.x + 20; bx += 10) {
+      ctx.beginPath(); ctx.moveTo(bx, GROUND_Y - 54); ctx.lineTo(bx, GROUND_Y - (c.opened ? 30 : 2)); ctx.stroke();
+    }
+    if (!c.opened) {
+      // eyes inside
+      ctx.fillStyle = '#3ee6d2';
+      ctx.fillRect(c.x - 8, GROUND_Y - 34, 4, 4);
+      ctx.fillRect(c.x + 5, GROUND_Y - 34, 4, 4);
+      // lock progress when being picked
+      if (c.lockT < 6) {
+        ctx.fillStyle = 'rgba(27,21,35,0.8)';
+        ctx.fillRect(c.x - 24, GROUND_Y - 70, 48, 7);
+        ctx.fillStyle = '#3ee6d2';
+        ctx.fillRect(c.x - 23, GROUND_Y - 69, 46 * (1 - c.lockT / 6), 5);
+      }
+    }
+  }
+
+  // ---- the escorted friend ----
+  if (w.friend) {
+    const fr = w.friend;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.ellipse(fr.x, GROUND_Y + 4, 14, 5, 0, 0, TAU); ctx.fill();
+    const hop = Math.abs(Math.sin(w.t * 6)) * 5;
+    ctx.fillStyle = '#7c9a5a';
+    ctx.beginPath(); ctx.ellipse(fr.x, GROUND_Y - 12 - hop, 12, 11, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#1b1523'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(fr.x + 3, GROUND_Y - 17 - hop, 3, 3);
+    if (fr.hp < fr.maxHp) {
+      ctx.fillStyle = 'rgba(27,21,35,0.8)';
+      ctx.fillRect(fr.x - 16, GROUND_Y - 40, 32, 5);
+      ctx.fillStyle = '#7ef2e2';
+      ctx.fillRect(fr.x - 15, GROUND_Y - 39, 30 * Math.max(0, fr.hp / fr.maxHp), 3);
+    }
+  }
+
+  // ---- the trainer at the arena edge ----
+  const figure = (tx, isKeeper) => {
+    ctx.fillStyle = '#1b1523';
+    ctx.fillRect(tx - 30, GROUND_Y - 26, 60, 26); // crate podium
+    ctx.fillStyle = isKeeper ? '#d8dbf2' : '#3a2f45';
+    // long coat silhouette
+    ctx.beginPath();
+    ctx.moveTo(tx - 12, GROUND_Y - 26);
+    ctx.lineTo(tx - 9, GROUND_Y - 74);
+    ctx.lineTo(tx + 9, GROUND_Y - 74);
+    ctx.lineTo(tx + 12, GROUND_Y - 26);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(tx, GROUND_Y - 82, 8, 0, TAU); ctx.fill(); // head
+    // gloves
+    ctx.fillStyle = isKeeper ? '#e05fd0' : '#776a85';
+    ctx.fillRect(tx - 14, GROUND_Y - 58, 5, 5);
+    ctx.fillRect(tx + 9, GROUND_Y - 58, 5, 5);
+  };
+  if (w.trainer && w.trainer.fledT <= 0) figure(w.trainer.x, false);
+  if (w.keeper && w.keeper.phase === 2) figure(1140, true);
+
+  // ---- enemy & gadget projectiles ----
+  for (const e of w.eshots) {
+    if (e.type === 'spit') {
+      ctx.fillStyle = '#7c9a5a';
+      ctx.beginPath(); ctx.arc(e.x, e.y, 7, 0, TAU); ctx.fill();
+    } else if (e.type === 'net') {
+      ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2;
+      ctx.strokeRect(e.x - 9, e.y - 9, 18, 18);
+      ctx.beginPath(); ctx.moveTo(e.x - 9, e.y - 9); ctx.lineTo(e.x + 9, e.y + 9); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(e.x + 9, e.y - 9); ctx.lineTo(e.x - 9, e.y + 9); ctx.stroke();
+    } else if (e.type === 'potion') {
+      ctx.fillStyle = '#e05fd0';
+      ctx.fillRect(e.x - 5, e.y - 8, 10, 12);
+      ctx.fillStyle = '#f2ead9';
+      ctx.fillRect(e.x - 3, e.y - 12, 6, 5);
+    } else if (e.type === 'ball') {
+      const spin = w.t * 12;
+      ctx.fillStyle = '#f2ead9';
+      ctx.beginPath(); ctx.arc(e.x, e.y, 9, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#a8323e';
+      ctx.beginPath(); ctx.arc(e.x, e.y, 9, spin, spin + Math.PI); ctx.fill();
+      ctx.strokeStyle = '#1b1523'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+
   // ---- foes ----
   for (const f of w.foes) {
     const B = BESTIARY[f.species];
@@ -222,7 +310,7 @@ export function draw(view, w, S) {
     ctx.ellipse(f.x, GROUND_Y + 5, f.w * 0.55 * (1 - Math.min(0.5, (GROUND_Y - f.y) / 500)), 6, 0, 0, TAU);
     ctx.fill();
 
-    const set = S[f.species];
+    const set = S[BESTIARY[f.species]?.sprite || f.species];
     if (set) {
       let frame;
       if (f.state === 'tell') frame = set.tell ? set.tell[0] : set.idle[0];
@@ -289,6 +377,14 @@ export function draw(view, w, S) {
       ctx.fillText('♪', f.x - 14, f.y - f.h - 10);
     }
 
+    // poise (armor) bar
+    if (f.maxPoise > 0 && f.poise > 0) {
+      const bw = 40;
+      ctx.fillStyle = 'rgba(27,21,35,0.8)';
+      ctx.fillRect(f.x - bw / 2 - 1, f.y - f.h - 18, bw + 2, 5);
+      ctx.fillStyle = '#d8dbf2';
+      ctx.fillRect(f.x - bw / 2, f.y - f.h - 17, bw * (f.poise / f.maxPoise), 3);
+    }
     // hp bar (only when damaged)
     if (f.hp < f.maxHp) {
       const bw = 46;
@@ -363,8 +459,48 @@ export function draw(view, w, S) {
   ctx.fillStyle = '#d8dbf2';
   ctx.fillText(w.arena.name, WORLD_W / 2, tagY);
 
+  // trainer banner + remaining-team pips
+  if (w.trainer && w.trainer.fledT <= 0) {
+    const tr = w.trainer;
+    ctx.font = '800 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(27,21,35,0.8)';
+    ctx.strokeText(tr.def.name, WORLD_W / 2, 46);
+    ctx.fillStyle = '#e05fd0';
+    ctx.fillText(tr.def.name, WORLD_W / 2, 46);
+    for (let i = 0; i < tr.row.length; i++) {
+      ctx.fillStyle = i < tr.idx ? 'rgba(216,219,242,0.25)' : '#e05fd0';
+      ctx.beginPath(); ctx.arc(WORLD_W / 2 - (tr.row.length - 1) * 9 + i * 18, 60, 5, 0, TAU); ctx.fill();
+    }
+  }
+  // struggle prompt
+  if (w.player.struggleNeed > 0) {
+    ctx.fillStyle = 'rgba(27,21,35,0.55)';
+    ctx.fillRect(view.bgX0, view.bgY0, view.bgX1 - view.bgX0, view.bgY1 - view.bgY0);
+    ctx.font = '900 34px sans-serif';
+    ctx.textAlign = 'center';
+    const pump = 1 + Math.sin(w.t * 16) * 0.08;
+    ctx.save();
+    ctx.translate(WORLD_W / 2, 240);
+    ctx.scale(pump, pump);
+    ctx.lineWidth = 6; ctx.strokeStyle = '#1b1523';
+    ctx.strokeText('MASH!', 0, 0);
+    ctx.fillStyle = '#e05fd0';
+    ctx.fillText('MASH!', 0, 0);
+    ctx.restore();
+    for (let i = 0; i < w.player.struggleNeed; i++) {
+      ctx.fillStyle = '#e05fd0';
+      ctx.beginPath(); ctx.arc(WORLD_W / 2 - (w.player.struggleNeed - 1) * 10 + i * 20, 270, 6, 0, TAU); ctx.fill();
+    }
+  }
+  // the Keeper's beat: the world holds its breath
+  if (w.keeper && w.keeper.beatT > 0) {
+    ctx.fillStyle = `rgba(18,16,31,${0.3 + Math.sin(w.t * 2) * 0.05})`;
+    ctx.fillRect(view.bgX0, view.bgY0, view.bgX1 - view.bgX0, view.bgY1 - view.bgY0);
+  }
+
   // boss bar
-  if (w.boss) {
+  if (w.boss && w.boss.boss) {
     const b = w.boss;
     ctx.font = '800 14px sans-serif';
     ctx.textAlign = 'center';

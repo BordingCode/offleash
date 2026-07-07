@@ -43,16 +43,34 @@ export const ATTACKS = {
 // legacy export (M1 tests/hud referenced it) — SNIG's base kit ids
 export const KIT = FORMS.snig.kit.map((id) => ({ id, name: MOVES[id].name, cd: MOVES[id].cd }));
 
-// ---------- bestiary (M4 grows this) ----------
+// ---------- bestiary — every lethal thing telegraphs ----------
+// behavior: rush (charge) · spit (arcing glob→puddle) · dive (flier plunges) ·
+// whip (root you, mash out) · slam (armored, overhead AoE) · peck (+retaliates
+// after your 3rd chain hit) · smog (area denial) · toll (buffs the pack —
+// interrupt it!) · drift (floating juggle-bait) · netdrop (drone) · static
+// (ward pylon shields allies) · royal (REGENT) · leash (the Keeper)
 export const BESTIARY = {
-  skitterlin: {
-    name: 'Skitterlin', hp: 18, dmg: 6, w: 30, h: 26, walk: 150,
-    tell: 0.3, attackT: 0.28, attackV: 420, recover: 0.7, essence: 'static',
-  },
-  growler: {
-    name: 'Growler', hp: 55, dmg: 12, w: 44, h: 38, walk: 105,
-    tell: 0.55, attackT: 0.34, attackV: 640, recover: 0.95, essence: 'rust',
-  },
+  skitterlin: { name: 'Skitterlin', behavior: 'rush', hp: 18, dmg: 6, w: 30, h: 26, walk: 150, tell: 0.3, attackT: 0.28, attackV: 420, recover: 0.7, essence: 'static' },
+  growler: { name: 'Growler', behavior: 'rush', hp: 55, dmg: 12, w: 44, h: 38, walk: 105, tell: 0.55, attackT: 0.34, attackV: 640, recover: 0.95, essence: 'rust' },
+  dripjaw: { name: 'Dripjaw', behavior: 'spit', hp: 45, dmg: 10, w: 40, h: 30, walk: 55, tell: 0.5, attackT: 0.2, recover: 1.2, essence: 'rain', range: 340 },
+  sparkfly: { name: 'Sparkfly', behavior: 'dive', hp: 26, dmg: 8, w: 26, h: 24, walk: 130, tell: 0.45, attackT: 0.4, attackV: 560, recover: 0.9, essence: 'moon', fly: 150 },
+  bindler: { name: 'Bindler', behavior: 'whip', hp: 40, dmg: 8, w: 30, h: 34, walk: 95, tell: 0.5, attackT: 0.25, recover: 1.0, essence: 'static', whipLen: 150, rootT: 1.4 },
+  slabby: { name: 'Slabby', behavior: 'slam', hp: 70, dmg: 14, w: 46, h: 42, walk: 55, tell: 0.8, attackT: 0.3, recover: 1.2, essence: 'rust', poise: 30, slamR: 120 },
+  wharfhag: { name: 'Wharfhag', behavior: 'peck', hp: 60, dmg: 11, w: 34, h: 44, walk: 90, tell: 0.45, attackT: 0.25, attackV: 300, recover: 0.9, essence: 'rain', retaliate: true },
+  chimeneer: { name: 'Chimeneer', behavior: 'smog', hp: 55, dmg: 8, w: 40, h: 40, walk: 60, tell: 0.6, attackT: 0.3, recover: 1.4, essence: 'rust', smogR: 110, smogT: 4 },
+  moonjelly: { name: 'Moonjelly', behavior: 'drift', hp: 50, dmg: 10, w: 30, h: 28, walk: 45, tell: 0.5, attackT: 0.5, recover: 1.0, essence: 'moon', fly: 110 },
+  bellwether: { name: 'Bellwether', behavior: 'toll', hp: 55, dmg: 10, w: 42, h: 38, walk: 70, tell: 0.9, attackT: 0.3, recover: 1.6, essence: 'moon', buffT: 6, elite: true },
+  // machines
+  tinny: { name: 'Tinny', behavior: 'rush', hp: 14, dmg: 5, w: 26, h: 26, walk: 180, tell: 0.25, attackT: 0.22, attackV: 460, recover: 0.6, essence: 'static', machine: true },
+  snaredrone: { name: 'Snare Drone', behavior: 'netdrop', hp: 30, dmg: 0, w: 34, h: 22, walk: 120, tell: 0.7, attackT: 0.2, recover: 2.2, essence: 'static', machine: true, fly: 210 },
+  wardpylon: { name: 'Ward Pylon', behavior: 'static', hp: 50, dmg: 0, w: 28, h: 60, walk: 0, tell: 1, attackT: 1, recover: 1, essence: 'rust', machine: true, shieldR: 220 },
+  bloodhound: { name: 'Bloodhound Unit', behavior: 'rush', hp: 120, dmg: 14, w: 52, h: 40, walk: 225, tell: 0.4, attackT: 0.4, attackV: 700, recover: 0.8, essence: 'rust', machine: true, poise: 20 },
+  // the Keeper's family & court
+  echo_wick: { name: 'Echo of Wick', behavior: 'rush', hp: 70, dmg: 12, w: 30, h: 40, walk: 170, tell: 0.4, attackT: 0.28, attackV: 700, recover: 0.7, essence: 'moon', sprite: 'wick' },
+  echo_phossa: { name: 'Echo of Phossa', behavior: 'dive', hp: 80, dmg: 12, w: 32, h: 32, walk: 120, tell: 0.45, attackT: 0.4, attackV: 560, recover: 0.9, essence: 'moon', fly: 140, sprite: 'phossa' },
+  echo_dent: { name: 'Echo of Dent', behavior: 'slam', hp: 110, dmg: 14, w: 44, h: 46, walk: 50, tell: 0.75, attackT: 0.3, recover: 1.1, essence: 'moon', poise: 25, slamR: 120, sprite: 'dent' },
+  regent: { name: 'REGENT', behavior: 'royal', hp: 220, dmg: 16, w: 46, h: 48, walk: 110, tell: 0.55, attackT: 0.32, attackV: 520, recover: 0.9, essence: 'moon', poise: 25 },
+  keeper: { name: 'THE KEEPER', behavior: 'leash', hp: 300, dmg: 18, w: 34, h: 56, walk: 90, tell: 0.7, attackT: 0.35, recover: 1.1, essence: 'rust' },
 };
 
 export function mkPlayer() {
@@ -93,6 +111,7 @@ export function mkPlayer() {
     hopT: 0, hopDef: null,
     buffer: [],
     pdodges: 0, combo: 0, comboT: 0,
+    rootT: 0, struggleNeed: 0, struggleTick: 0,
     hitSinceAtk: false, // Cold Receipt: were we hit since our last attack?
   };
 }
@@ -114,13 +133,16 @@ export function applyForm(w, formId) {
   w.events.push({ t: 'form', form: formId, name: F.name });
 }
 
-function mkFoe(w, species, x) {
+function mkFoe(w, species, x, over = {}) {
   const B = BESTIARY[species];
   const f = {
     kind: 'foe', species,
-    x, y: GROUND_Y, vx: 0, vy: 0, w: B.w, h: B.h,
-    facing: -1, onGround: true,
-    hp: B.hp, maxHp: B.hp,
+    x, y: B.fly ? GROUND_Y - B.fly : GROUND_Y, vx: 0, vy: 0, w: B.w, h: B.h,
+    facing: -1, onGround: !B.fly,
+    fly: B.fly || 0,
+    poise: B.poise || 0, maxPoise: B.poise || 0,
+    dmgOver: over.dmg,
+    hp: over.hp || B.hp, maxHp: over.hp || B.hp,
     state: 'idle', stateT: 0.4 + w.rng() * 0.6, animT: w.rng() * 10,
     attackHit: false, hitFlash: 0, juggle: 0,
     // statuses
@@ -144,7 +166,14 @@ export function createWorld(seed = 1) {
     foes: [],
     pylons: [],
     pickups: [],
-    zones: [],       // {type:'snare'|'caltrops'|'rubble', x, r, t, ...}
+    zones: [],       // {type:'snare'|'caltrops'|'puddle'|'smog'|..., x, r, t, ...}
+    eshots: [],      // enemy/gadget projectiles {x,y,vx,vy,grav,type}
+    trainer: null,   // the hunter directing this boss fight
+    keeper: null,    // the finale's phase machine
+    friend: null,    // escort missions {x, hp, ...}
+    cages: [],       // rescue missions {x, lockT, opened}
+    chase: null,     // auto-scroll escapes {speed, dist, done}
+    tollT: 0,        // Bellwether pack-frenzy
     panes: [],       // Glass Ward {x, w, t, shock}
     decoy: null,     // {x, hp, t, boom}
     curfewT: 0, curfewSlow: 1,
@@ -168,13 +197,28 @@ export function startMission(w, def) {
   w.zones.length = 0; w.panes.length = 0; w.decoy = null;
   w.player.x = 120; w.player.y = GROUND_Y; w.player.combo = 0;
   w.cam.x = 0;
+  w.cages.length = 0; w.friend = null; w.chase = null;
   if (def.pylons > 0) {
     for (let i = 0; i < def.pylons; i++) {
       w.pylons.push({ x: def.arenaW * (0.45 + i * 0.22), hp: 60, maxHp: 60 });
     }
   }
-  spawnWave(w);
-  toast(w, `${def.type === 'sabotage' ? 'Smash the pylons' : 'Clear them out'} — ${def.arena}.`, 3.0);
+  if (def.type === 'rescue') {
+    w.cages.push({ x: def.arenaW * 0.5, lockT: 6, opened: false });
+    w.cages.push({ x: def.arenaW * 0.85, lockT: 6, opened: false });
+  }
+  if (def.type === 'escort') {
+    w.friend = { x: 90, y: GROUND_Y, hp: 40, maxHp: 40, speed: 62, w: 26, h: 26, ambushed: [] };
+    w.player.x = 150;
+  }
+  if (def.type === 'chase') {
+    w.arena.w = def.arenaW; // long straight
+    mkFoe(w, 'bloodhound', 40);
+    for (let i = 1; i <= 3; i++) w.pylons.push({ x: def.arenaW * (0.25 * i) + 120, hp: 30, maxHp: 30, barrier: true });
+  }
+  if (def.waves && def.type !== 'chase') spawnWave(w);
+  const OBJ = { sabotage: 'Smash the pylons', rescue: 'Break the cages open — stand close and hold the line', escort: 'Get the little one to the far fence. Keep it breathing', chase: 'RUN. Smash what blocks you — it is right behind you' };
+  toast(w, `${OBJ[def.type] || 'Clear them out'} — ${def.arena}.`, 3.2);
 }
 
 function spawnWave(w) {
@@ -228,12 +272,50 @@ function outMult(w) {
   return m;
 }
 
+function markPerfect(w, f) {
+  const p = w.player;
+  if (f.pdodged) return;
+  f.pdodged = true;
+  p.pdodges++;
+  p.stacks = Math.min(p.stackMax, p.stacks + 1);
+  p.lastPerfectT = w.t;
+  w.slowmoT = 0.35;
+  w.events.push({ t: 'pdodge', x: p.x, y: p.y - 60 });
+}
+
 function damageFoe(w, f, def, mul = 1, opts = {}) {
   const p = w.player;
+  // Ward Pylons shield nearby allies entirely
+  if (!BESTIARY[f.species]?.machine || f.species === 'bloodhound') {
+    const ward = w.foes.find((o) => !o.dead && o.species === 'wardpylon' && Math.abs(o.x - f.x) < BESTIARY.wardpylon.shieldR);
+    if (ward && f.species !== 'wardpylon') {
+      w.events.push({ t: 'warded', x: f.x, y: f.y - f.h / 2 });
+      return;
+    }
+  }
   let m = mul * (opts.raw ? 1 : outMult(w));
   if (f.vulnT > 0) m *= f.vulnMult;
   if (f.asleepT > 0) { if (f.sleepCrit) m *= 2; f.asleepT = 0; } // damage wakes
   const dmg = Math.max(1, Math.round(def.dmg * m));
+  // poise armor: heavy hits and armor-breakers chew it; light hits bounce off
+  if (f.poise > 0) {
+    const heavy = def.armorbreak || dmg >= 13 || def.launch;
+    f.poise -= dmg * (heavy ? 1.4 : 0.5);
+    f.hitFlash = 0.06;
+    if (f.poise <= 0) {
+      f.poise = 0;
+      f.state = 'hurt'; f.stateT = 1.2;
+      w.events.push({ t: 'armorbreak', x: f.x, y: f.y - f.h });
+    } else {
+      w.events.push({ t: 'clink', x: f.x, y: f.y - f.h / 2 });
+      return;
+    }
+  }
+  // Wharfhag: your 3rd chain hit triggers an instant riposte (short flash-tell)
+  if (BESTIARY[f.species]?.retaliate && def === ATTACKS.c3 && f.state !== 'hurt' && !f.dead) {
+    f.state = 'tell'; f.stateT = 0.2;
+    w.events.push({ t: 'tell', x: f.x, y: f.y - f.h - 10, species: f.species });
+  }
   f.hp -= dmg;
   f.hitFlash = 0.09;
   const dir = sign(f.x - p.x) || p.facing;
@@ -651,6 +733,29 @@ function stepPlayer(w, dt, input) {
     if (p.vy > -60 && p.vy < 60 && p.hopDef.hover) { p.vy = Math.min(p.vy, 0); p.hopT += dt; if (p.hopT < p.hopDef.hover) p.vy = -20; }
   }
 
+  // netted / capture-ball struggle: mash ANY button to break out
+  if (p.struggleNeed > 0) {
+    const mash = (input.atk ? 1 : 0) + (input.jump ? 1 : 0) + (input.dash ? 1 : 0);
+    if (mash) {
+      p.struggleNeed -= mash;
+      w.events.push({ t: 'struggle', left: p.struggleNeed });
+      if (p.struggleNeed <= 0) {
+        p.struggleNeed = 0;
+        p.iframes = 1.0;
+        w.events.push({ t: 'break_free', x: p.x, y: p.y - 50 });
+      }
+    }
+    p.struggleTick = (p.struggleTick || 0) + dt;
+    if (p.struggleTick > 0.9) { p.struggleTick = 0; p.hp = Math.max(1, p.hp - 2); }
+    return;
+  }
+  if (p.rootT > 0) {
+    p.rootT -= dt;
+    const mash = (input.atk ? 1 : 0) + (input.jump ? 1 : 0) + (input.dash ? 1 : 0);
+    if (mash) p.rootT -= 0.18 * mash;
+    return;
+  }
+
   // buffered edges
   if (input.atk) bufferAction(p, 'atk', w.t);
   if (input.jump) bufferAction(p, 'jump', w.t);
@@ -768,6 +873,12 @@ function stepPlayer(w, dt, input) {
   if (input.mx !== 0) p.facing = sign(input.mx);
   p.x += p.vx * dt;
   p.x = clamp(p.x, 20, w.arena.w - 20);
+  // chase barriers are solid until smashed
+  for (const py of w.pylons) {
+    if (py.barrier && py.hp > 0 && p.x > py.x - 30 && p.x < py.x + 30) {
+      p.x = p.x < py.x ? py.x - 30 : py.x + 30;
+    }
+  }
 
   const canGroundJump = p.onGround || p.coyoteT > 0;
   if (consume(p, 'jump', w.t)) {
@@ -792,6 +903,17 @@ function stepPlayer(w, dt, input) {
 
   stepGravity(p, dt, w);
   p.state = p.onGround ? (Math.abs(p.vx) > 20 ? 'run' : 'idle') : 'air';
+
+  // enemy area denial
+  for (const z of w.zones) {
+    if ((z.type !== 'smog' && z.type !== 'puddle') || Math.abs(p.x - z.x) > z.r || !p.onGround) continue;
+    p._dotT = (p._dotT || 0) + dt;
+    if (p._dotT > 0.7) {
+      p._dotT = 0;
+      w.lastThreat = z.type === 'smog' ? 'the smog' : 'gutter sludge';
+      hurtPlayer(w, Math.max(2, Math.round((z.dps || 6) * 0.5)), z.x, null);
+    }
+  }
 }
 
 function stepGravity(p, dt, w) {
@@ -872,17 +994,26 @@ function stepFoe(w, f, dt) {
     }
   }
 
-  if (!f.onGround) {
+  // fliers hover unless launched; launched things fall
+  if (!f.onGround && !(f.fly && f.state !== 'launched' && f.state !== 'down')) {
     f.vy += GRAV * (p.zgFloat ? 0.6 : 1) * dt;
     f.x += f.vx * dt;
     f.y += f.vy * dt;
     f.x = clamp(f.x, 20, w.arena.w - 20);
     if (f.y >= GROUND_Y) {
       f.y = GROUND_Y; f.onGround = true; f.vy = 0; f.vx = 0; f.juggle = 0;
-      f.state = 'down'; f.stateT = 0.5;
+      f.state = 'down'; f.stateT = f.fly ? 0.9 : 0.5;
       w.events.push({ t: 'foe_land', x: f.x, y: f.y });
     }
     return;
+  }
+  // fliers drift back up to hover height after being grounded
+  if (f.fly && f.onGround && f.state !== 'down') {
+    f.onGround = false;
+  }
+  if (f.fly && f.state !== 'launched' && f.state !== 'down' && f.state !== 'attack') {
+    const hoverY = GROUND_Y - f.fly + Math.sin(f.animT * 2.2) * 10;
+    f.y += (hoverY - f.y) * Math.min(1, 3 * dt);
   }
 
   if (f.state === 'hurt') {
@@ -905,12 +1036,29 @@ function stepFoe(w, f, dt) {
   const dist = Math.abs(dx);
   f.facing = sign(dx) || f.facing;
 
+  const wantRange = f.species === 'growler' || f.species === 'bloodhound' ? 190
+    : B.behavior === 'spit' ? (B.range || 300)
+    : B.behavior === 'slam' || B.behavior === 'smog' ? 110
+    : B.behavior === 'whip' ? B.whipLen - 20
+    : B.behavior === 'toll' ? 260
+    : B.behavior === 'static' ? 1e9
+    : B.behavior === 'netdrop' ? 30 /* hovers above you */
+    : 90;
+
   if (f.state === 'idle') {
     f.stateT -= edt;
-    if (f.stateT <= 0) f.state = 'approach';
+    if (f.stateT <= 0) f.state = B.behavior === 'static' ? 'idle' : 'approach';
+    if (B.behavior === 'static') { f.stateT = 1; return; }
   } else if (f.state === 'approach') {
-    if (dist > (f.species === 'growler' ? 190 : 90)) {
-      f.x += sign(dx) * B.walk * tempo * dt;
+    if (B.behavior === 'netdrop') {
+      // hover toward a spot above the player
+      f.x += sign(p.x - f.x) * B.walk * tempo * dt;
+      if (Math.abs(p.x - f.x) < 40) {
+        f.state = 'tell'; f.stateT = B.tell / tempo; f.attackHit = false;
+        w.events.push({ t: 'tell', x: f.x, y: f.y - f.h - 10, species: f.species });
+      }
+    } else if (dist > wantRange) {
+      f.x += sign(dx) * B.walk * tempo * dt * (f.frenzyT > 0 ? 1.4 : 1);
       // glass panes shock melee foes crossing them
       for (const pane of w.panes) {
         if (pane.shock && Math.abs(f.x - pane.x) < pane.w / 2 && (!f._paneT || w.t - f._paneT > 1.5)) {
@@ -935,39 +1083,343 @@ function stepFoe(w, f, dt) {
     if (f.stateT <= 0) {
       f.state = 'attack'; f.stateT = B.attackT;
       f.attackDir = sign(dx) || f.facing;
+      f.pattern = (f.pattern || 0) + 1;
       w.events.push({ t: 'foe_attack', species: f.species });
     }
   } else if (f.state === 'attack') {
     f.stateT -= dt;
-    f.x += f.attackDir * B.attackV * tempo * dt;
-    f.x = clamp(f.x, 20, w.arena.w - 20);
-    // decoy soaks attacks
-    if (w.decoy && Math.abs(f.x - w.decoy.x) < 40) {
-      w.decoy.hp -= 10;
-      f.state = 'recover'; f.stateT = B.recover;
-    } else if (!f.attackHit) {
-      const [fx, fy, fw, fh] = foeHurtbox(f);
-      const [px, py, pw, ph] = playerHurtbox(p);
-      if (rectsHit(fx, fy, fw, fh, px, py, pw, ph) && p.y > GROUND_Y - 60) {
-        if (p.iframes > 0 && p.dashT > 0) {
-          if (!f.pdodged) {
-            f.pdodged = true;
-            p.pdodges++;
-            p.stacks = Math.min(p.stackMax, p.stacks + 1);
-            p.lastPerfectT = w.t;
-            w.slowmoT = 0.35;
-            w.events.push({ t: 'pdodge', x: p.x, y: p.y - 60 });
+    const beh = B.behavior;
+    const foeDmg = f.dmgOver || (f.boss ? f.boss.dmg : B.dmg);
+    if (beh === 'spit' && !f.attackHit) {
+      // one arcing glob at the player's position
+      f.attackHit = true;
+      const dxs = p.x - f.x;
+      w.eshots.push({ x: f.x + f.facing * 14, y: f.y - f.h + 6, vx: dxs * 1.1, vy: -420, grav: 900, type: 'spit', dmg: foeDmg, from: f });
+      w.events.push({ t: 'eshoot', x: f.x, y: f.y - f.h });
+    } else if (beh === 'whip' && !f.attackHit) {
+      f.attackHit = true;
+      const reach = B.whipLen;
+      if (Math.abs(p.x - f.x) < reach && sign(p.x - f.x) === f.facing && p.y > GROUND_Y - 70) {
+        if (p.iframes > 0 && p.dashT > 0) { markPerfect(w, f); }
+        else {
+          w.lastThreat = `${B.name}'s tape-snare`;
+          if (hurtPlayer(w, foeDmg, f.x, f)) { p.rootT = B.rootT; w.events.push({ t: 'rooted' }); }
+        }
+      }
+    } else if (beh === 'slam' && !f.attackHit) {
+      f.attackHit = true;
+      if (Math.abs(p.x - f.x) < B.slamR && p.onGround) {
+        if (p.iframes > 0 && p.dashT > 0) markPerfect(w, f);
+        else { w.lastThreat = `${B.name}'s slab-slam`; hurtPlayer(w, foeDmg, f.x, f); }
+      }
+      w.events.push({ t: 'slam', x: f.x, y: GROUND_Y });
+    } else if (beh === 'smog' && !f.attackHit) {
+      f.attackHit = true;
+      w.zones.push({ type: 'smog', x: f.x + f.facing * 70, r: B.smogR, t: B.smogT, dps: foeDmg });
+      w.events.push({ t: 'eshoot', x: f.x, y: f.y - f.h });
+    } else if (beh === 'toll' && !f.attackHit) {
+      f.attackHit = true;
+      for (const o of w.foes) if (o !== f && !o.dead) o.frenzyT = B.buffT;
+      w.tollT = B.buffT;
+      w.events.push({ t: 'toll', x: f.x, y: f.y - f.h });
+    } else if (beh === 'netdrop' && !f.attackHit) {
+      f.attackHit = true;
+      w.eshots.push({ x: f.x, y: f.y, vx: 0, vy: 320, grav: 500, type: 'net', dmg: 4, rootT: 1.6 });
+      w.events.push({ t: 'eshoot', x: f.x, y: f.y });
+    } else if (beh === 'royal' && !f.attackHit && f.pattern === 1) {
+      // REGENT's leap-slam
+      f.attackHit = true;
+      if (Math.abs(p.x - f.x) < 130 && p.onGround) {
+        if (p.iframes > 0 && p.dashT > 0) markPerfect(w, f);
+        else { w.lastThreat = 'REGENT'; hurtPlayer(w, foeDmg, f.x, f); }
+      }
+      w.events.push({ t: 'slam', x: f.x, y: GROUND_Y });
+    } else if (beh === 'leash' && !f.attackHit) {
+      // the Keeper's whip: sweep (low — jump it) / crack (dash through) / grab-pull
+      const pat = f.pattern % 3;
+      const reach = 240;
+      const inReach = Math.abs(p.x - f.x) < reach && sign(p.x - f.x) === f.facing;
+      f.attackHit = true;
+      if (inReach) {
+        const dodged = p.iframes > 0 && p.dashT > 0;
+        const jumped = pat === 0 && p.y < GROUND_Y - 50;
+        if (dodged) markPerfect(w, f);
+        else if (jumped) { /* the sweep passes under you */ }
+        else {
+          w.lastThreat = 'the Leash';
+          if (pat === 2) { p.x = f.x + f.facing * -70; } // grab-pull drags you in
+          hurtPlayer(w, foeDmg, f.x, f);
+        }
+      }
+      w.events.push({ t: 'whipcrack', x: f.x + f.facing * 120, y: GROUND_Y - 40, pat });
+    } else {
+      // charging behaviors: rush / dive / peck / drift / royal fan
+      f.x += f.attackDir * (B.attackV || 300) * tempo * dt;
+      f.x = clamp(f.x, 20, w.arena.w - 20);
+      if (beh === 'dive') {
+        // plunge toward the ground line
+        f.y = Math.min(GROUND_Y, f.y + 620 * dt);
+      }
+      if (w.decoy && Math.abs(f.x - w.decoy.x) < 40) {
+        w.decoy.hp -= 10;
+        f.state = 'recover'; f.stateT = B.recover;
+      } else if (!f.attackHit) {
+        const [fx, fy, fw, fh] = foeHurtbox(f);
+        const [px, py, pw, ph] = playerHurtbox(p);
+        if (rectsHit(fx, fy, fw, fh, px, py, pw, ph) && (beh === 'dive' || p.y > GROUND_Y - 60)) {
+          if (p.iframes > 0 && p.dashT > 0) markPerfect(w, f);
+          else {
+            w.lastThreat = f.boss ? `${f.boss.name}` : `${B.name}'s ${beh === 'dive' ? 'dive' : beh === 'peck' ? 'beak' : 'lunge'}`;
+            if (hurtPlayer(w, foeDmg, f.x, f)) f.attackHit = true;
           }
-        } else {
-          w.lastThreat = f.boss ? `${f.boss.name}` : `${B.name}'s ${f.species === 'growler' ? 'lunge' : 'rush'}`;
-          if (hurtPlayer(w, f.boss ? f.boss.dmg : B.dmg, f.x, f)) f.attackHit = true;
         }
       }
     }
-    if (f.stateT <= 0) { f.state = 'recover'; f.stateT = B.recover; f.pdodged = false; }
+    if (f.stateT <= 0) {
+      f.state = 'recover'; f.stateT = B.recover; f.pdodged = false;
+      if (f.fly) f.onGround = false;
+    }
   } else if (f.state === 'recover') {
     f.stateT -= edt;
     if (f.stateT <= 0) { f.state = 'idle'; f.stateT = 0.3 + w.rng() * 0.8; }
+  }
+}
+
+// ---------- enemy & gadget projectiles ----------
+function stepEshots(w, dt) {
+  const p = w.player;
+  for (let i = w.eshots.length - 1; i >= 0; i--) {
+    const e = w.eshots[i];
+    e.vy += (e.grav || 0) * dt;
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    let dead = false;
+    // smashable mid-air by the player's active attack
+    if (e.smashable !== false && p.atk) {
+      const a = p.atk;
+      if (a.t >= a.def.startup && a.t <= a.def.startup + a.def.active) {
+        const [hx, hy, hw, hh] = playerHitbox(p, a.def);
+        if (rectsHit(hx, hy, hw, hh, e.x - 10, e.y - 10, 20, 20)) {
+          dead = true;
+          w.events.push({ t: 'smashed', x: e.x, y: e.y, kind: e.type });
+        }
+      }
+    }
+    // hit the player
+    if (!dead && rectsHit(e.x - 9, e.y - 9, 18, 18, p.x - p.w / 2, p.y - p.h, p.w, p.h)) {
+      dead = true;
+      if (e.type === 'ball') {
+        if (p.iframes <= 0 && p.guardT <= 0) {
+          p.struggleNeed = e.need || 6;
+          w.lastThreat = 'the capture ball';
+          w.events.push({ t: 'balled', x: p.x, y: p.y - 40, need: p.struggleNeed });
+        } else w.events.push({ t: 'blocked', x: p.x, y: p.y - 50 });
+      } else if (e.type === 'net') {
+        if (p.iframes <= 0 && p.guardT <= 0) {
+          w.lastThreat = 'a snare net';
+          if (hurtPlayer(w, e.dmg || 4, e.x, null)) { p.rootT = e.rootT || 1.6; w.events.push({ t: 'rooted' }); }
+        } else w.events.push({ t: 'blocked', x: p.x, y: p.y - 50 });
+      } else if (e.type === 'spit') {
+        w.lastThreat = 'a gob of gutter-spit';
+        hurtPlayer(w, e.dmg, e.x, null);
+        w.zones.push({ type: 'puddle', x: e.x, r: 60, t: 4, dps: 6 }); // it splatters regardless
+      } else if (e.type === 'potion') {
+        dead = false; // potions sail past the player harmlessly
+      }
+    }
+    // land
+    if (!dead && e.y >= GROUND_Y - 4) {
+      dead = true;
+      if (e.type === 'spit') w.zones.push({ type: 'puddle', x: e.x, r: 60, t: 4, dps: 6 });
+      if (e.type === 'potion') {
+        // heals the hurt-est living hunter monster nearby
+        let best = null, worst = 1;
+        for (const f of w.foes) {
+          if (f.dead) continue;
+          const frac = f.hp / f.maxHp;
+          if (frac < worst) { worst = frac; best = f; }
+        }
+        if (best) {
+          best.hp = Math.min(best.maxHp, best.hp + Math.round(best.maxHp * (e.heal || 0.2)));
+          w.events.push({ t: 'foe_healed', x: best.x, y: best.y - best.h });
+        }
+      }
+      if (e.type === 'ball' || e.type === 'net') w.events.push({ t: 'smashed', x: e.x, y: GROUND_Y, kind: e.type });
+    }
+    if (dead) w.eshots.splice(i, 1);
+  }
+}
+
+// ---------- the trainer director ----------
+export function startTrainer(w, hunter, act) {
+  w.mission = null;
+  w.arena = { w: 1200, name: 'the appointment' };
+  w.foes.length = 0; w.pylons.length = 0; w.pickups.length = 0;
+  w.zones.length = 0; w.panes.length = 0; w.eshots.length = 0; w.decoy = null;
+  w.player.x = 140; w.player.y = GROUND_Y;
+  w.cam.x = 0;
+  w.trainer = {
+    def: hunter, act,
+    row: hunter.team[act],
+    idx: 0, gadgetT: hunter.every, ballT: 0, fledT: 0,
+    x: 1140, taunted: false,
+  };
+  trainerSend(w);
+  w.events.push({ t: 'trainer_start', name: hunter.name, line: hunter.intro });
+}
+
+function trainerSend(w) {
+  const tr = w.trainer;
+  const n = tr.def.twins ? 2 : 1;
+  for (let i = 0; i < n && tr.idx < tr.row.length; i++) {
+    const m = tr.row[tr.idx++];
+    const f = mkFoe(w, m.s, tr.x - 120 - i * 70, { hp: m.hp, dmg: m.dmg });
+    f.fromTrainer = true;
+    w.events.push({ t: 'trainer_send', species: m.s });
+  }
+}
+
+function stepTrainer(w, dt) {
+  const tr = w.trainer;
+  if (!tr || tr.fledT > 0) {
+    if (tr && tr.fledT > 0) {
+      tr.fledT -= dt;
+      if (tr.fledT <= 0) w.events.push({ t: 'trainer_gone' });
+    }
+    return;
+  }
+  const alive = w.foes.filter((f) => !f.dead && f.fromTrainer);
+  const sentAll = tr.idx >= tr.row.length;
+  // overlap: next send when the current one is at ≤30%
+  if (!sentAll && (alive.length === 0 || alive.every((f) => f.hp <= f.maxHp * 0.3))) {
+    trainerSend(w);
+    if (!tr.taunted) { tr.taunted = true; w.events.push({ t: 'trainer_line', line: tr.def.taunt }); }
+  }
+  if (sentAll && alive.length === 0) {
+    tr.fledT = 1.4;
+    w.events.push({ t: 'trainer_fled', line: tr.def.flee });
+    return;
+  }
+  // gadgets between sends
+  tr.gadgetT -= dt;
+  if (tr.gadgetT <= 0 && alive.length) {
+    tr.gadgetT = tr.def.every;
+    throwGadget(w, tr.def.gadget, tr.x);
+  }
+  // capture balls once the last monster is out
+  if (sentAll && alive.length) {
+    tr.ballT -= dt;
+    if (tr.ballT <= 0) {
+      tr.ballT = 9;
+      const p = w.player;
+      w.eshots.push({ x: tr.x, y: GROUND_Y - 120, vx: (p.x - tr.x) * 0.9, vy: -320, grav: 800, type: 'ball', need: 6 + w.actNum * 2 });
+      w.events.push({ t: 'ball_thrown', x: tr.x, y: GROUND_Y - 120 });
+    }
+  }
+}
+
+function throwGadget(w, kind, fromX) {
+  const p = w.player;
+  if (kind === 'potion') {
+    w.eshots.push({ x: fromX, y: GROUND_Y - 130, vx: -240 - w.rng() * 120, vy: -360, grav: 800, type: 'potion', heal: 0.2 });
+  } else if (kind === 'net') {
+    w.eshots.push({ x: fromX, y: GROUND_Y - 130, vx: (p.x - fromX) * 0.8, vy: -300, grav: 800, type: 'net', dmg: 4, rootT: 1.6 });
+  } else if (kind === 'drone') {
+    if (w.foes.filter((f) => f.species === 'snaredrone').length < 2) mkFoe(w, 'snaredrone', fromX - 100);
+  } else if (kind === 'pylon') {
+    if (w.foes.filter((f) => f.species === 'wardpylon').length < 1) mkFoe(w, 'wardpylon', clamp(p.x + 220, 100, w.arena.w - 100));
+  } else if (kind === 'reinforce') {
+    if (w.foes.length < 7) mkFoe(w, 'tinny', fromX - 80);
+  }
+  w.events.push({ t: 'gadget', kind, x: fromX });
+}
+
+// ---------- THE KEEPER — three phases ----------
+export function startKeeper(w, K, starter) {
+  w.mission = null;
+  w.arena = { w: 1200, name: K.arena };
+  w.foes.length = 0; w.pylons.length = 0; w.pickups.length = 0;
+  w.zones.length = 0; w.panes.length = 0; w.eshots.length = 0; w.decoy = null;
+  w.player.x = 140; w.player.y = GROUND_Y;
+  w.cam.x = 0;
+  w.keeper = { def: K, starter, phase: 1, sendIdx: 0, gadgetT: 6, ballT: 8, beatDone: false, beatT: 0, shrunk: 0 };
+  keeperSend(w);
+  w.events.push({ t: 'keeper_start', line: K.lines.intro[starter] || K.lines.intro.snig });
+}
+
+function keeperSend(w) {
+  const k = w.keeper;
+  const e = k.def.phase1.echoes[k.sendIdx++];
+  if (e) {
+    const f = mkFoe(w, e.s, 900, { hp: e.hp, dmg: e.dmg });
+    f.fromTrainer = true;
+    w.events.push({ t: 'trainer_send', species: e.s });
+  }
+}
+
+function stepKeeper(w, dt) {
+  const k = w.keeper;
+  if (!k) return;
+  const p = w.player;
+  const alive = w.foes.filter((f) => !f.dead);
+
+  // the scripted beat: the whip lowers
+  if (k.beatT > 0) {
+    k.beatT -= dt;
+    if (k.beatT <= 0) w.events.push({ t: 'keeper_beat_end' });
+    return;
+  }
+
+  if (k.phase === 1) {
+    if (alive.length === 0 || alive.every((f) => f.hp <= f.maxHp * 0.3)) {
+      if (k.sendIdx < k.def.phase1.echoes.length) keeperSend(w);
+      else if (alive.length === 0) {
+        k.phase = 2;
+        const R = k.def.phase2.regent;
+        const f = mkFoe(w, R.s, 900, { hp: R.hp, dmg: R.dmg });
+        f.fromTrainer = true;
+        w.boss = f;
+        w.events.push({ t: 'keeper_line', line: k.def.lines.phase2 });
+      }
+    }
+  } else if (k.phase === 2) {
+    if (alive.length === 0) {
+      k.phase = 3;
+      const f = mkFoe(w, 'keeper', 950, { hp: k.def.phase3.hp, dmg: k.def.phase3.dmg });
+      f.boss = { name: 'THE KEEPER', dmg: k.def.phase3.dmg, tell: BESTIARY.keeper.tell };
+      f.fromTrainer = true;
+      w.boss = f;
+      w.events.push({ t: 'keeper_line', line: k.def.lines.phase3 });
+      return;
+    }
+    k.gadgetT -= dt;
+    if (k.gadgetT <= 0) {
+      k.gadgetT = k.def.phase2.every;
+      throwGadget(w, k.def.phase2.gadgets[(w.rng() * k.def.phase2.gadgets.length) | 0], 1140);
+    }
+    k.ballT -= dt;
+    if (k.ballT <= 0) {
+      k.ballT = k.def.phase2.ballEvery;
+      w.eshots.push({ x: 1140, y: GROUND_Y - 130, vx: (p.x - 1140) * 0.9, vy: -320, grav: 800, type: 'ball', need: 8 });
+      w.events.push({ t: 'ball_thrown', x: 1140, y: GROUND_Y - 130 });
+    }
+  } else if (k.phase === 3) {
+    const boss = w.boss;
+    if (!boss || boss.dead) return; // keeper_down handled by killFoe -> boss_down
+    const frac = boss.hp / boss.maxHp;
+    const shrinks = k.def.phase3.shrinkAt;
+    if (k.shrunk < shrinks.length && frac <= shrinks[k.shrunk]) {
+      k.shrunk++;
+      w.arena.w = Math.max(760, w.arena.w - 200);
+      p.x = clamp(p.x, 20, w.arena.w - 20);
+      boss.x = clamp(boss.x, 20, w.arena.w - 20);
+      w.events.push({ t: 'fence', x: w.arena.w });
+    }
+    if (!k.beatDone && frac <= k.def.phase3.beatAt) {
+      k.beatDone = true;
+      k.beatT = 3;
+      w.events.push({ t: 'keeper_beat', line: k.def.lines.beat[k.starter] || k.def.lines.beat.snig });
+    }
   }
 }
 
@@ -997,9 +1449,17 @@ export function step(w, dt, input) {
     }
   }
 
+  // the Keeper's beat freezes the fight around the words
+  const frozen = w.keeper && w.keeper.beatT > 0;
   stepPlayer(w, dt, input);
-  for (const f of w.foes) if (!f.dead) stepFoe(w, f, dt);
+  if (!frozen) for (const f of w.foes) if (!f.dead) stepFoe(w, f, dt);
+  for (const f of w.foes) if (f.frenzyT) f.frenzyT = Math.max(0, f.frenzyT - dt);
+  // safety: a boss dropped to 0 by any path still announces its fall
+  if (w.boss && w.boss.hp <= 0 && !w.boss.dead) killFoe(w, w.boss);
   for (let i = w.foes.length - 1; i >= 0; i--) if (w.foes[i].dead) w.foes.splice(i, 1);
+  stepEshots(w, dt);
+  stepTrainer(w, dt);
+  stepKeeper(w, dt);
   stepCamera(w, dt);
 
   const p = w.player;
@@ -1021,6 +1481,56 @@ export function step(w, dt, input) {
       } else if (w.foes.length === 0) {
         w.mission.wave++;
         spawnWave(w);
+      }
+    } else if (def.type === 'rescue') {
+      // pick locks while the waves keep coming
+      for (const c of w.cages) {
+        if (c.opened) continue;
+        if (Math.abs(p.x - c.x) < 70 && p.onGround && p.hurtT <= 0) {
+          c.lockT -= dt;
+          if (c.lockT <= 0) { c.opened = true; w.events.push({ t: 'cage_open', x: c.x }); }
+        }
+      }
+      if (w.cages.every((c) => c.opened)) {
+        w.mission.done = true;
+        w.events.push({ t: 'mission_complete' });
+      } else if (w.foes.length === 0) {
+        w.mission.wave++;
+        spawnWave(w);
+      }
+    } else if (def.type === 'escort') {
+      const fr = w.friend;
+      if (fr) {
+        const danger = w.foes.some((f) => !f.dead && Math.abs(f.x - fr.x) < 260);
+        if (!danger) fr.x += fr.speed * dt;
+        // scripted ambushes
+        for (const [i, at] of [[0, 0.35], [1, 0.7]]) {
+          if (!fr.ambushed.includes(i) && fr.x > w.arena.w * at) {
+            fr.ambushed.push(i);
+            spawnWave(w);
+            w.events.push({ t: 'ambush' });
+          }
+        }
+        // foes maul the friend on contact
+        for (const f of w.foes) {
+          if (!f.dead && f.state === 'attack' && Math.abs(f.x - fr.x) < 40 && (!f._bitFriend || w.t - f._bitFriend > 1)) {
+            f._bitFriend = w.t;
+            fr.hp -= f.dmgOver || BESTIARY[f.species].dmg;
+            w.events.push({ t: 'friend_hurt', x: fr.x, y: fr.y - 40 });
+          }
+        }
+        if (fr.hp <= 0) {
+          w.mission.done = true;
+          w.events.push({ t: 'mission_failed' });
+        } else if (fr.x >= w.arena.w - 70) {
+          w.mission.done = true;
+          w.events.push({ t: 'mission_complete' });
+        }
+      }
+    } else if (def.type === 'chase') {
+      if (p.x >= w.arena.w - 80) {
+        w.mission.done = true;
+        w.events.push({ t: 'mission_complete' });
       }
     } else if (w.foes.length === 0) {
       w.mission.wave++;

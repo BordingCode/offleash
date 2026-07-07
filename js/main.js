@@ -4,8 +4,9 @@ import { CanvasView } from './engine/canvas.js';
 import { GameLoop } from './engine/loop.js';
 import { FX, updateFX, addTrauma, hitStop, screenFlash, burst, shockwave, floatText } from './engine/fx.js';
 import { buildSprites } from './data/sprites.js';
-import { createWorld, seedPractice, step, startMission, startBoss, applyForm, KIT } from './game/world.js';
-import { createRun, missionById, clearedCount, bossReady, actBoss, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS, needsEvolution, needsAttune, evolutionOffer, evolve, attune, upgradeOffer, applyUpgrade } from './game/run.js';
+import { createWorld, seedPractice, step, startMission, startTrainer, startKeeper, applyForm, KIT } from './game/world.js';
+import { createRun, missionById, clearedCount, bossReady, hunterFor, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS, needsEvolution, needsAttune, evolutionOffer, evolve, attune, upgradeOffer, applyUpgrade } from './game/run.js';
+import { KEEPER } from './data/trainers.js';
 import { HEAL_AFTER_BOSS, MISSION_TYPES } from './data/missions.js';
 import { FORMS } from './data/forms.js';
 import { MOVES, ESSENCE_ICON as EICON, ESSENCE_STYLE } from './data/moves.js';
@@ -74,7 +75,7 @@ function openBoard() {
   const list = $('missions');
   list.innerHTML = '';
   for (const m of run.board) {
-    const done = run.cleared.includes(m.id);
+    const done = run.cleared.includes(m.id) || run.failed.includes(m.id);
     const card = document.createElement('button');
     card.className = 'mission' + (done ? ' done' : '');
     card.innerHTML = `
@@ -87,17 +88,27 @@ function openBoard() {
     }
     list.appendChild(card);
   }
-  // the act boss card
+  // the act hunter card — or, past act 3, THE KEEPER
   const boss = document.createElement('button');
-  const ready = bossReady(run);
-  boss.className = 'mission boss' + (ready ? '' : ' locked');
-  const B = actBoss(run);
-  boss.innerHTML = `
-    <span class="mtype">☠ ACT ${run.act} HUNT</span>
-    <strong>${B.name}</strong>
-    <em>${ready ? 'It knows you’re coming. Go anyway.' : `Clear ${CLEAR_TO_BOSS - clearedCount(run)} more mission${CLEAR_TO_BOSS - clearedCount(run) === 1 ? '' : 's'} to draw it out.`}</em>
-    <span class="mdanger">${'✦'.repeat(3)}</span>`;
-  if (ready) boss.addEventListener('pointerup', enterBoss);
+  if (run.stage === 'keeper') {
+    boss.className = 'mission boss';
+    boss.innerHTML = `
+      <span class="mtype">⛓ THE FACILITY</span>
+      <strong>THE KEEPER</strong>
+      <em>The gate is open. The atrium waits. They will be terribly polite about it.</em>
+      <span class="mdanger">✦✦✦✦</span>`;
+    boss.addEventListener('pointerup', enterKeeper);
+  } else {
+    const ready = bossReady(run);
+    boss.className = 'mission boss' + (ready ? '' : ' locked');
+    const H = hunterFor(run);
+    boss.innerHTML = `
+      <span class="mtype">☠ ACT ${run.act} HUNTER</span>
+      <strong>${H.name}</strong>
+      <em>${ready ? 'They know you’re coming. Go anyway.' : `Clear ${CLEAR_TO_BOSS - clearedCount(run)} more mission${CLEAR_TO_BOSS - clearedCount(run) === 1 ? '' : 's'} to force the appointment.`}</em>
+      <span class="mdanger">${'✦'.repeat(3)}</span>`;
+    if (ready) boss.addEventListener('pointerup', enterBoss);
+  }
   list.appendChild(boss);
 
   $('boardsub').textContent =
@@ -158,8 +169,20 @@ function enterMission(id) {
 
 function enterBoss() {
   world = createWorld(run.seed * 977 + run.act);
+  world.actNum = run.act;
   syncPlayerFromRun();
-  startBoss(world, actBoss(run));
+  startTrainer(world, hunterFor(run), run.act);
+  $('board').classList.remove('show');
+  mode = 'fight';
+  setIntensity(1.0);
+  sfx.ui();
+}
+
+function enterKeeper() {
+  world = createWorld(run.seed * 3301);
+  world.actNum = 3;
+  syncPlayerFromRun();
+  startKeeper(world, KEEPER, run.starter);
   $('board').classList.remove('show');
   mode = 'fight';
   setIntensity(1.0);
@@ -254,19 +277,26 @@ function onBossDown() {
   syncRunFromWorld();
   run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * HEAL_AFTER_BOSS));
   const result = completeBoss(run);
-  if (result === 'won') {
-    meta.wins++; meta.runs++;
-    run = null;
-    SAVE.clearRun(meta, { muted: isMuted() });
-    setTimeout(() => {
-      $('winsub').textContent = 'You breach the outer gate. The rain, for once, feels like applause. (The Keeper is waiting… in a later milestone.)';
-      $('victory').classList.add('show');
-      mode = 'board';
-    }, 1200);
+  if (result === 'keeper') {
+    saveAll();
+    setTimeout(() => afterFightRewards('The last hunter is gone. Only the facility remains — and the one who runs it.'), 1200);
   } else {
     saveAll();
     setTimeout(() => afterFightRewards(`Act ${run.act - 1} cleared — the city opens. Patched up a little.`), 1200);
   }
+}
+
+function onKeeperDown() {
+  const starter = run.starter;
+  meta.wins++; meta.runs++;
+  run = null;
+  SAVE.clearRun(meta, { muted: isMuted() });
+  setTimeout(() => {
+    $('winsub').textContent = (KEEPER.lines.defeated[starter] || KEEPER.lines.defeated.snig) +
+      ' — You walk out through the front door. The rain, for once, feels like applause.';
+    $('victory').classList.add('show');
+    mode = 'board';
+  }, 1400);
 }
 
 const defeatStats = { kos: 0, bestCombo: 0 };
@@ -333,8 +363,55 @@ function handleEvents() {
       case 'boss_start': sfx.tell(); addTrauma(0.3); break;
       case 'boss_down':
         sfx.foeDown(); screenFlash(0.5, '224,95,208'); addTrauma(0.4);
-        onBossDown();
+        if (world.keeper) onKeeperDown();
         break;
+      case 'trainer_start': showToast(ev.line); sfx.tell(); addTrauma(0.2); break;
+      case 'trainer_line': showToast(ev.line); break;
+      case 'trainer_send': sfx.tell(); break;
+      case 'trainer_fled': showToast(ev.line); sfx.foeDown(); screenFlash(0.4, '224,95,208'); break;
+      case 'trainer_gone': onBossDown(); break;
+      case 'keeper_start': showToast(ev.line); sfx.tell(); addTrauma(0.3); break;
+      case 'keeper_line': showToast(ev.line); sfx.tell(); break;
+      case 'keeper_beat': showToast(ev.line); setIntensity(0.15); break;
+      case 'keeper_beat_end': setIntensity(1.0); break;
+      case 'fence': sfx.slam(); addTrauma(0.4); showToast('The fences rise.'); break;
+      case 'gadget': sfx.ui(); break;
+      case 'ball_thrown': sfx.tell(); break;
+      case 'balled':
+        sfx.hurt(); addTrauma(0.4);
+        showToast('CAUGHT IN THE BALL — MASH EVERYTHING!');
+        break;
+      case 'struggle': break;
+      case 'break_free':
+        sfx.pdodge(); screenFlash(0.4, '62,230,210');
+        floatText(ev.x, ev.y, 'BROKE FREE', { color: '#3ee6d2', size: 20, crit: true });
+        break;
+      case 'rooted': showToast('Snared — mash to tear loose!'); sfx.hurt(); break;
+      case 'armorbreak':
+        sfx.slam(); hitStop(0.1); addTrauma(0.3);
+        floatText(ev.x, ev.y, 'ARMOR BREAK', { color: '#ffb347', size: 18, crit: true });
+        break;
+      case 'clink': sfx.blocked(); floatText(ev.x, ev.y, 'clink', { color: '#776a85', size: 12 }); break;
+      case 'warded': sfx.blocked(); floatText(ev.x, ev.y, 'warded', { color: '#9fc4e8', size: 12 }); break;
+      case 'toll': sfx.tell(); showToast('The bell tolls — the pack quickens! Silence it!'); break;
+      case 'smashed': sfx.hit(true); burst(ev.x, ev.y, 10, { color: '#ffe08a', speed: 160, grav: 200 }); break;
+      case 'eshoot': sfx.tell(); break;
+      case 'foe_healed': floatText(ev.x, ev.y, '+heal', { color: '#ff8fa3', size: 13 }); break;
+      case 'cage_open':
+        sfx.pdodge(); screenFlash(0.35, '62,230,210');
+        floatText(ev.x, 400, 'FREE!', { color: '#3ee6d2', size: 20, crit: true });
+        break;
+      case 'friend_hurt': sfx.hurt(); addTrauma(0.2); break;
+      case 'ambush': showToast('Ambush!'); sfx.tell(); break;
+      case 'mission_failed':
+        sfx.defeat();
+        run.failed.push(run.atMission);
+        run.atMission = null;
+        syncRunFromWorld();
+        saveAll();
+        setTimeout(() => { showToast('You got out. It didn’t. The board remembers.'); openBoard(); }, 1200);
+        break;
+      case 'whipcrack': sfx.slam(); addTrauma(0.2); break;
       case 'foe_land': burst(ev.x, ev.y, 6, { color: '#776a85', speed: 110, grav: 250 }); break;
       case 'jump': sfx.jump(); break;
       case 'dive': sfx.dash(); break;

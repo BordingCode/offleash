@@ -29,6 +29,33 @@ export const ARENAS = {
 };
 
 export const MISSION_TYPES = {
+  rescue: {
+    name: 'RESCUE',
+    icon: '⛓',
+    flavor: [
+      'Cages in the yard. You remember cages.',
+      'Two locks. Guards on rotation. One very motivated dragon.',
+      'Someone in there has been waiting a long time.',
+    ],
+  },
+  escort: {
+    name: 'ESCORT',
+    icon: '➔',
+    flavor: [
+      'The little one can’t fight. You can.',
+      'Walk them to the fence line. All of them come back or none.',
+      'It follows you now. Terrifying responsibility.',
+    ],
+  },
+  chase: {
+    name: 'THE CHASE',
+    icon: '»',
+    flavor: [
+      'A Bloodhound Unit has your scent. Outrun the warranty.',
+      'Do not stop. Do not look back. Smash the fences.',
+      'Ninety seconds of being faster than yesterday.',
+    ],
+  },
   bout: {
     name: 'BOUT',
     icon: '⚔',

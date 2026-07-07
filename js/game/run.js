@@ -2,6 +2,7 @@
 // clear 3 of 5 to draw out the act boss. Pure logic — no DOM.
 import { mulberry32 } from './world.js';
 import { WAVES, ARENAS, MISSION_TYPES, ACT_BOSSES } from '../data/missions.js';
+import { HUNTERS } from '../data/trainers.js';
 import { FORMS, formsFor, EVOLVE_LEVEL, ATTUNE_LEVEL } from '../data/forms.js';
 import { MOVES } from '../data/moves.js';
 
@@ -24,10 +25,22 @@ export function createRun(seed, starter = 'snig') {
     hp: FORMS[starter].stats.hp, maxHp: FORMS[starter].stats.hp,
     missionsDone: 0,
     atMission: null,
+    stage: 'acts',       // 'acts' -> 'keeper' -> won
+    hunters: [],         // the three drawn for this run
+    failed: [],          // escort losses etc. — consumed, not cleared
   };
+  const rng = mulberry32(seed * 3 + 1);
+  const pool = HUNTERS.map((h) => h.id);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = (rng() * (i + 1)) | 0;
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  run.hunters = pool.slice(0, 3);
   run.board = genBoard(run);
   return run;
 }
+
+export const hunterFor = (run) => HUNTERS.find((h) => h.id === run.hunters[run.act - 1]) || HUNTERS[0];
 
 // max HP = the form's base + level growth
 export function runMaxHp(run) {
@@ -88,8 +101,9 @@ export function genBoard(run) {
   const rng = mulberry32(run.seed * 31 + run.act * 977);
   const arenas = [...ARENAS['act' + run.act]];
   const board = [];
+  const typePool = ['bout', 'bout', 'sabotage', 'rescue', rng() < 0.5 ? 'escort' : 'chase'];
   for (let i = 0; i < MISSIONS_PER_ACT; i++) {
-    const type = i >= 3 || rng() < 0.65 ? 'bout' : 'sabotage'; // ≥1 sabotage likely, bouts dominate
+    const type = typePool[i] || 'bout';
     const T = MISSION_TYPES[type];
     const arena = arenas.splice((rng() * arenas.length) | 0, 1)[0] || 'the back lots';
     const waveSet = WAVES['act' + run.act];
@@ -102,7 +116,7 @@ export function genBoard(run) {
       danger: Math.min(3, danger),
       waves: buildWaves(run.act, wave, danger, rng),
       pylons: type === 'sabotage' ? 2 + (danger > 2 ? 1 : 0) : 0,
-      arenaW: 1100 + ((rng() * 3) | 0) * 150,
+      arenaW: type === 'chase' ? 2600 : type === 'escort' ? 1700 : 1100 + ((rng() * 3) | 0) * 150,
     });
   }
   // guarantee at least one sabotage per act
@@ -139,10 +153,13 @@ export function completeMission(run, id) {
   run.atMission = null;
 }
 
-// the act boss fell — heal a little, move up a rung (or win the run)
+// the act boss fell — heal a little, move up a rung (or face the Keeper)
 export function completeBoss(run) {
   run.bossDown.push(run.act);
-  if (run.act >= 3) return 'won';
+  if (run.act >= 3) {
+    run.stage = 'keeper';
+    return 'keeper';
+  }
   run.act++;
   run.cleared = [];
   run.board = genBoard(run);
