@@ -11,7 +11,10 @@ export function defaultMeta() {
     achievements: {},
     powerTrack: {},
     denTokens: 0,
-    pursuitBest: 0,
+    pursuitBest: 0,   // highest Pursuit level cleared (opt-in ladder after first win)
+    pursuitNext: 0,   // Pursuit level chosen for the next run
+    tutorialSeen: false,
+    coachDone: false,   // the one-time on-screen control hints (first fight)
     wins: 0, runs: 0,
     storySeen: [],
   };

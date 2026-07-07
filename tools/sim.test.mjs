@@ -161,5 +161,41 @@ console.log('— determinism —');
   ok(snap(w1) === snap(w2), 'same seed + same inputs ⇒ identical world state');
 }
 
+console.log('— pursuit (opt-in rules, inert when off) —');
+import { startMission } from '../js/game/world.js';
+import { createRun } from '../js/game/run.js';
+const BOUT = (over = {}) => ({ id: 'x', type: 'bout', arena: 'test', danger: 1,
+  waves: [[{ s: 'skitterlin', x: 0.6 }]], pylons: 0, arenaW: 1100, ...over });
+{
+  const w = createWorld(3); w.pursuit = null;
+  startMission(w, BOUT());
+  ok(!w.foes.some(f => f.species === 'snaredrone'), 'Pursuit off ⇒ no patrol drone');
+}
+{
+  const w = createWorld(3); w.pursuit = { spotters: true };
+  startMission(w, BOUT());
+  ok(w.foes.some(f => f.species === 'snaredrone'), 'Pursuit 1 Spotters ⇒ a Snare Drone patrols');
+}
+{
+  // determinism must survive an inert pursuit object
+  const snap = (w) => JSON.stringify([w.player.x | 0, w.foes.map(f => [f.species, f.hp])]);
+  const a = createWorld(9); a.pursuit = null; startMission(a, BOUT());
+  const b = createWorld(9); b.pursuit = { spotters: false, curfew: false }; startMission(b, BOUT());
+  run(a, 120); run(b, 120);
+  ok(snap(a) === snap(b), 'a falsy-flag pursuit object changes nothing');
+}
+{
+  const r = createRun(5, 'snig', {}, 2);       // Pursuit 2 = Lockdown
+  ok(r.board.some(m => m.locked), 'Pursuit 2 Lockdown ⇒ one board mission padlocked');
+  ok(r.board.filter(m => !m.locked).length >= 3, 'Lockdown still leaves ≥3 routes to clear');
+}
+{
+  const r = createRun(5, 'snig', {}, 7);       // Pursuit 7 = Elites Everywhere
+  const finalWaves = r.board.map(m => m.waves[m.waves.length - 1]);
+  ok(finalWaves.every(wv => wv.some(e => e.s === 'bellwether')), 'Pursuit 7 ⇒ a Bellwether marshals every final wave');
+  const r0 = createRun(5, 'snig', {}, 0);
+  ok(r0.board.every(m => !m.waves.some(wv => wv.some(e => e.s === 'bellwether'))), 'Pursuit 0 ⇒ no marshal');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -7,8 +7,9 @@ import { buildSprites } from './data/sprites.js';
 import { createWorld, seedPractice, step, startMission, startTrainer, startKeeper, applyForm, KIT } from './game/world.js';
 import { createRun, missionById, clearedCount, bossReady, hunterFor, completeMission, completeBoss, grantXp, CLEAR_TO_BOSS, needsEvolution, needsAttune, evolutionOffer, evolve, attune, upgradeOffer, applyUpgrade } from './game/run.js';
 import { KEEPER } from './data/trainers.js';
-import { SCENES, DEN_IDLE, RESCUE_ORDER, CRYPTID_NAMES } from './data/story.js';
+import { SCENES, DEN_IDLE, RESCUE_ORDER, CRYPTID_NAMES, INTRO } from './data/story.js';
 import { ACHIEVEMENTS } from './data/achievements.js';
+import { PURSUIT } from './data/pursuit.js';
 import { HEAL_AFTER_BOSS, MISSION_TYPES } from './data/missions.js';
 import { FORMS } from './data/forms.js';
 import { MOVES, ESSENCE_ICON as EICON, ESSENCE_STYLE } from './data/moves.js';
@@ -111,6 +112,20 @@ function openDen() {
     });
     shop.appendChild(b);
   }
+  // Pursuit selector — only after the first escape succeeds
+  const pz = $('denpursuit');
+  if ((meta.pursuitBest || 0) >= 1) {
+    const cur = Math.min(meta.pursuitNext || 0, meta.pursuitBest);
+    const rule = cur > 0 ? PURSUIT[cur - 1] : null;
+    pz.innerHTML =
+      `<div class="pursuitline">PURSUIT <b>${cur}</b> / ${meta.pursuitBest} unlocked` +
+      (rule ? ` — <em>${rule.name}: ${rule.desc}</em>` : ' — <em>the clean escape</em>') +
+      ` <button id="pursuitcycle" class="smallbtn">change ▸</button></div>`;
+    $('pursuitcycle').addEventListener('pointerup', () => {
+      meta.pursuitNext = ((cur + 1) > meta.pursuitBest) ? 0 : cur + 1;
+      sfx.ui(); saveAll(); openDen();
+    });
+  } else pz.innerHTML = '';
   $('densub').textContent =
     `friends home: ${meta.denFriends.length + meta.starters.length - 1} · den tokens: ${meta.denTokens} ⬡ · escapes: ${meta.runs} · out: ${meta.wins}`;
   $('den').classList.add('show');
@@ -136,14 +151,21 @@ function nextScene() {
   return SCENES.find((sc) => !meta.storySeen.includes(sc.id) &&
     Object.entries(sc.when).every(([k, v]) => st[k] >= v));
 }
-let sceneQ = null, sceneI = 0;
-function playScene(sc) {
-  sceneQ = sc; sceneI = 0;
+let sceneQ = null, sceneI = 0, sceneDone = null;
+function playScene(sc, onDone = null) {
+  sceneQ = sc; sceneI = 0; sceneDone = onDone;
   $('scenespeaker').textContent = sc.speaker;
   $('sceneline').textContent = sc.lines[0];
   $('scenenext').textContent = sc.lines.length > 1 ? '…' : '— ok —';
+  $('sceneskip').style.display = onDone ? '' : 'none';   // skip only on the one-off intro
   $('scene').classList.add('show');
 }
+$('sceneskip').addEventListener('pointerup', () => {
+  $('scene').classList.remove('show');
+  $('sceneskip').style.display = 'none';
+  const cb = sceneDone; sceneDone = null; sceneQ = null;
+  if (cb) cb();
+});
 $('scenenext').addEventListener('pointerup', () => {
   sceneI++;
   if (sceneQ && sceneI < sceneQ.lines.length) {
@@ -151,9 +173,15 @@ $('scenenext').addEventListener('pointerup', () => {
     $('scenenext').textContent = sceneI < sceneQ.lines.length - 1 ? '…' : '— ok —';
     sfx.ui();
   } else {
+    $('scene').classList.remove('show');
+    if (sceneDone) {           // a one-off scene (e.g. the escape intro) with a callback
+      $('sceneskip').style.display = 'none';
+      const cb = sceneDone; sceneDone = null; sceneQ = null;
+      cb();
+      return;
+    }
     meta.storySeen.push(sceneQ.id);
     saveAll();
-    $('scene').classList.remove('show');
     const more = nextScene();
     if (more) playScene(more);
   }
@@ -225,18 +253,21 @@ const ESSENCE_ICON = { static: '⚡', rain: '🌧', rust: '⚙', moon: '🌙' };
 function openBoard() {
   mode = 'board';
   setIntensity(0.35);
+  if (coach.on) { coach.on = false; $('coach').classList.remove('show'); }
   const list = $('missions');
   list.innerHTML = '';
+  const blind = run.pursuit >= 8;          // Off the Grid — you route on type alone
   for (const m of run.board) {
     const done = run.cleared.includes(m.id) || run.failed.includes(m.id);
+    const locked = m.locked && !done;      // Lockdown — padlocked, no route through it
     const card = document.createElement('button');
-    card.className = 'mission' + (done ? ' done' : '');
+    card.className = 'mission' + (done ? ' done' : '') + (locked ? ' locked' : '');
     card.innerHTML = `
       <span class="mtype">${MISSION_TYPES[m.type].icon} ${MISSION_TYPES[m.type].name}</span>
-      <strong>${m.arena}</strong>
-      <em>${m.flavor}</em>
-      <span class="mdanger">${'✦'.repeat(m.danger)}${done ? ' · CLEARED' : ''}</span>`;
-    if (!done) {
+      <strong>${locked ? '🔒 padlocked' : (blind ? '???' : m.arena)}</strong>
+      <em>${locked ? 'Lockdown. This route is sealed tonight.' : (blind ? 'Off the grid — you’ll only know when you arrive.' : m.flavor)}</em>
+      <span class="mdanger">${blind && !done ? '✦?' : '✦'.repeat(m.danger)}${done ? ' · CLEARED' : ''}</span>`;
+    if (!done && !locked) {
       card.addEventListener('pointerup', () => enterMission(m.id));
     }
     list.appendChild(card);
@@ -317,17 +348,20 @@ function enterMission(id) {
   run.atMission = id;
   saveAll();                        // snapshot BEFORE the fight — quitting resumes here
   world = createWorld(run.seed * 131 + run.missionsDone * 7 + run.act * 31);
+  world.pursuit = pursuitFlags(run.pursuit);
   syncPlayerFromRun();
   startMission(world, m);
   $('board').classList.remove('show');
   mode = 'fight';
   setIntensity(0.7);
   sfx.ui();
+  if (!meta.coachDone) startCoach();
 }
 
 function enterBoss() {
   world = createWorld(run.seed * 977 + run.act);
   world.actNum = run.act;
+  world.pursuit = pursuitFlags(run.pursuit);
   syncPlayerFromRun();
   startTrainer(world, hunterFor(run), run.act);
   $('board').classList.remove('show');
@@ -339,6 +373,7 @@ function enterBoss() {
 function enterKeeper() {
   world = createWorld(run.seed * 3301);
   world.actNum = 3;
+  world.pursuit = pursuitFlags(run.pursuit);
   syncPlayerFromRun();
   startKeeper(world, KEEPER, run.starter);
   $('board').classList.remove('show');
@@ -454,9 +489,26 @@ function onBossDown() {
     prog().act3Times = (prog().act3Times || 0) + 1;
     if (prog().act3Times >= 5) award('longwayround');
   }
-  run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * HEAL_AFTER_BOSS));
+  // Pursuit 4 — Rationing: the after-boss patch-up is halved.
+  const healFrac = HEAL_AFTER_BOSS * (run.pursuit >= 4 ? 0.5 : 1);
+  run.hp = Math.min(run.maxHp, run.hp + Math.round(run.maxHp * healFrac));
   if (run.perks && run.perks.rainbarrel) run.healCharges = 1;
+  const wasAct = run.act;
   const result = completeBoss(run);
+  // Pursuit 6 — The Understudy: the Keeper checks your form between acts 2 and 3.
+  const understudy = run.pursuit >= 6 && result === 'next' && wasAct === 2;
+  if (understudy) {
+    run.hp = Math.max(1, Math.round(run.hp * 0.6));
+    saveAll();
+    setTimeout(() => playScene({
+      id: 'understudy', speaker: 'THE KEEPER',
+      lines: [
+        '“There you are. No, no — don’t stop on my account. Just checking your form.”',
+        '“A little soft in the middle. We’ll fix that at home. Off you pop.”',
+      ],
+    }, () => afterFightRewards('The Keeper let you pass — lighter, and colder for it.')), 1200);
+    return;
+  }
   if (result === 'keeper') {
     saveAll();
     setTimeout(() => afterFightRewards('The last hunter is gone. Only the facility remains — and the one who runs it.'), 1200);
@@ -469,6 +521,8 @@ function onBossDown() {
 function onKeeperDown() {
   const starter = run.starter;
   meta.wins++; meta.runs++;
+  // clearing at the highest unlocked Pursuit rung unlocks the next
+  if (run.pursuit >= (meta.pursuitBest || 0)) meta.pursuitBest = Math.min(8, (meta.pursuitBest || 0) + 1);
   run = null;
   SAVE.clearRun(meta, { muted: isMuted() });
   setTimeout(() => {
@@ -481,6 +535,7 @@ function onKeeperDown() {
 
 const defeatStats = { kos: 0, bestCombo: 0 };
 function showDefeat(cause) {
+  if (coach.on) { coach.on = false; $('coach').classList.remove('show'); }
   meta.runs++;
   if (world.trainer) {
     const id = world.trainer.def.id;
@@ -507,17 +562,31 @@ $('winbtn').addEventListener('pointerup', () => {
   openDen();
 });
 
+// Pursuit rules → combat flags (inert unless the run opted in). Cumulative.
+function pursuitFlags(level) {
+  if (!level) return null;
+  return {
+    spotters: level >= 1,
+    curfew: level >= 3,
+    ration: level >= 4,
+    marked: level >= 5,
+  };
+}
+
 function newRun() {
-  run = createRun((Math.random() * 1e9) | 0, denStarter, { ...meta.powerTrack });
+  const lvl = Math.min(meta.pursuitNext || 0, meta.pursuitBest || 0);
+  run = createRun((Math.random() * 1e9) | 0, denStarter, { ...meta.powerTrack }, lvl);
   defeatStats.kos = 0; defeatStats.bestCombo = 0;
   saveAll();
   sfx.ui();
+  if (lvl > 0) showToast(`PURSUIT ${lvl} — the rules stack against you.`);
   openBoard();
 }
 
 // ---------- sim events -> juice ----------
 function handleEvents() {
   for (const ev of world.events) {
+    if (coach.on) coachNote(ev.t);
     switch (ev.t) {
       case 'swing': sfx.swing(ev.big); break;
       case 'hit':
@@ -649,6 +718,54 @@ function handleEvents() {
   renderHud();
 }
 
+// ---------- coach: one-time on-screen control hints, first real fight ----------
+// Each step clears itself the moment the player DOES the thing — teaching by doing,
+// never a wall of text. Fully skippable (it just fades as you play).
+const COACH_STEPS = [
+  { hint: 'DRAG the left side to MOVE', sub: 'your thumb is the stick' },
+  { hint: 'TAP <b>A</b> to STRIKE', sub: 'again · again · again — a combo' },
+  { hint: 'DASH to slip through a hit', sub: 'time it and everything slows' },
+  { hint: 'JUMP, then <b>A</b> in the air', sub: 'launch ↑+A, then juggle' },
+];
+const coach = { on: false, i: 0, startX: 0, holdT: 0, done: {} };
+function startCoach() {
+  coach.on = true; coach.i = 0; coach.holdT = 0;
+  coach.startX = world.player.x; coach.done = {};
+  showCoach();
+}
+function showCoach() {
+  const c = COACH_STEPS[coach.i];
+  const el = $('coach');
+  if (!c) { el.classList.remove('show'); coach.on = false; meta.coachDone = true; saveAll(); return; }
+  el.innerHTML = `${c.hint}<small>${c.sub}</small>`;
+  el.classList.add('show');
+}
+function coachAdvance() {
+  coach.i++; coach.holdT = 0;
+  const el = $('coach');
+  el.classList.remove('show');
+  setTimeout(showCoach, 260);
+}
+// fired from handleEvents when the player performs an action
+function coachNote(kind) {
+  if (!coach.on) return;
+  if (coach.i === 1 && kind === 'swing') coach.done.swing = true;
+  if (coach.i === 2 && kind === 'dash') coach.done.dash = true;
+  if (coach.i === 3 && kind === 'jump') coach.done.jump = true;
+}
+function updateCoach(dt) {
+  if (!coach.on) return;
+  coach.holdT += dt;
+  let cleared = false;
+  if (coach.i === 0 && Math.abs(world.player.x - coach.startX) > 70) cleared = true;
+  else if (coach.i === 1 && coach.done.swing) cleared = true;
+  else if (coach.i === 2 && coach.done.dash) cleared = true;
+  else if (coach.i === 3 && coach.done.jump) cleared = true;
+  // never nag: if a step lingers, let it fade on its own after a while
+  if (!cleared && coach.holdT > 14) cleared = true;
+  if (cleared) coachAdvance();
+}
+
 // ---------- loop ----------
 const loop = new GameLoop({
   update(dt) {
@@ -658,6 +775,7 @@ const loop = new GameLoop({
     loop.speed = world.slowmoT > 0 ? 0.3 : 1;
     step(world, dt, input.poll());
     handleEvents();
+    updateCoach(dt);
   },
   render() {
     const t0 = performance.now();
@@ -687,8 +805,11 @@ $('startbtn').addEventListener('pointerup', () => {
   initAudio(); resumeAudio(); startMusic();
   $('title').classList.add('hidden');
   started = true;
-  if (run) openBoard();
-  else openDen();
+  if (run) { openBoard(); return; }
+  if (!meta.tutorialSeen) {
+    meta.tutorialSeen = true; saveAll();
+    playScene(INTRO, openDen);      // the escape night, once — then home
+  } else openDen();
 });
 $('practicebtn').addEventListener('pointerup', () => {
   // the yard: sparring without stakes

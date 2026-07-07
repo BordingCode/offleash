@@ -6,12 +6,12 @@
 <title>OFF-LEASH</title>
 <meta name="description" content="A moody neon-night brawler roguelike — you are the monster, and you are DONE being collected.">
 <meta name="theme-color" content="#1b1523">
-<link rel="manifest" href="manifest.json?v=4">
-<link rel="icon" href="assets/icons/icon.svg?v=4" type="image/svg+xml">
+<link rel="manifest" href="manifest.json?v=5">
+<link rel="icon" href="assets/icons/icon.svg?v=5" type="image/svg+xml">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="css/main.css?v=4">
+<link rel="stylesheet" href="css/main.css?v=5">
 <script>
 // hub-stats tracker v2
 (function(){try{var A="offleash",K="hubdev",d=localStorage.getItem(K);if(!d){d=(self.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now()+"."+Math.random().toString(36).slice(2));localStorage.setItem(K,d);}var u="https://hub-stats.mathiasjob.workers.dev/hit",b=JSON.stringify({app:A,d:d});if(navigator.sendBeacon){navigator.sendBeacon(u,b);}else{fetch(u,{method:"POST",body:b,keepalive:true,mode:"no-cors"});}}catch(e){}})();
@@ -52,12 +52,13 @@
   <button id="mutebtn">♪</button>
 </div>
 <div id="toast"></div>
+<div id="coach"></div>
 
 <div id="title">
   <h1>OFF-LEASH</h1>
   <p>they collected you. collect yourself back.</p>
   <button id="startbtn">RUN</button>
-  <span class="mstone">milestone 3 · the essence stirs</span>
+  <span class="mstone">the escape · trainers, the keeper, and home</span>
 </div>
 
 <div class="overlay" id="den">
@@ -66,6 +67,7 @@
     <p id="densub" class="dim"></p>
     <div id="starterrow" class="choicerow"></div>
     <div id="denshop" class="choicerow"></div>
+    <div id="denpursuit"></div>
     <div class="denbtns">
       <button id="beginbtn" class="bigbtn">BEGIN THE ESCAPE</button>
       <button id="gallerybtn" class="smallbtn">form gallery</button>
@@ -79,6 +81,7 @@
     <h2 id="scenespeaker" class="win"></h2>
     <p id="sceneline"></p>
     <button id="scenenext" class="bigbtn">…</button>
+    <button id="sceneskip" class="smallbtn" style="display:none">skip →</button>
   </div>
 </div>
 
@@ -135,6 +138,6 @@
 
 <div id="rotate"><span>📱</span>Turn your phone sideways — the night is wide.</div>
 
-<script type="module" src="js/main.js?v=4"></script>
+<script type="module" src="js/main.js?v=5"></script>
 </body>
 </html>

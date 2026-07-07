@@ -189,6 +189,7 @@ export function createWorld(seed = 1) {
     over: false, overCause: null,
     paused: false,
     levelHpBonus: 0,
+    pursuit: null,   // set by main.js: {spotters,curfew,ration,marked} — inert when null
   };
 }
 
@@ -218,6 +219,10 @@ export function startMission(w, def) {
     w.arena.w = def.arenaW; // long straight
     mkFoe(w, 'bloodhound', 40);
     for (let i = 1; i <= 3; i++) w.pylons.push({ x: def.arenaW * (0.25 * i) + 120, hp: 30, maxHp: 30, barrier: true });
+  }
+  // Pursuit 1 — Spotters: every arena patrols a Snare Drone.
+  if (w.pursuit && w.pursuit.spotters && def.type !== 'chase') {
+    mkFoe(w, 'snaredrone', Math.min(def.arenaW - 100, 520));
   }
   if (def.waves && def.type !== 'chase') spawnWave(w);
   const OBJ = { sabotage: 'Smash the pylons', rescue: 'Break the cages open — stand close and hold the line', escort: 'Get the little one to the far fence. Keep it breathing', chase: 'RUN. Smash what blocks you — it is right behind you' };
@@ -359,7 +364,8 @@ function killFoe(w, f) {
       const next = w.foes.find((o) => !o.dead && o !== f);
       if (next) next.burr = f.burr;
     }
-    if (w.rng() < 0.22) w.pickups.push({ x: f.x, y: GROUND_Y, heal: 12 });
+    // Pursuit 4 — Rationing: the streets go hungry (heal cans rarer).
+    if (w.rng() < (w.pursuit && w.pursuit.ration ? 0.11 : 0.22)) w.pickups.push({ x: f.x, y: GROUND_Y, heal: 12 });
   }
 }
 
@@ -1310,8 +1316,8 @@ function stepTrainer(w, dt) {
     tr.gadgetT = tr.def.every;
     throwGadget(w, tr.def.gadget, tr.x);
   }
-  // capture balls once the last monster is out
-  if (sentAll && alive.length) {
+  // capture balls once the last monster is out — Pursuit 5 (Marked): from the FIRST.
+  if ((sentAll || (w.pursuit && w.pursuit.marked)) && alive.length) {
     tr.ballT -= dt;
     if (tr.ballT <= 0) {
       tr.ballT = 9;
@@ -1464,6 +1470,14 @@ export function step(w, dt, input) {
   stepEshots(w, dt);
   stepTrainer(w, dt);
   stepKeeper(w, dt);
+  // Pursuit 3 — Curfew: linger past 75s in a mission and a Bloodhound joins the hunt.
+  if (w.pursuit && w.pursuit.curfew && w.mission && !w.mission.done &&
+      w.mission.def.type !== 'chase' && w.t > 75 && !w._curfewHound) {
+    w._curfewHound = true;
+    mkFoe(w, 'bloodhound', Math.max(60, w.player.x - 400));
+    toast(w, 'CURFEW — a Bloodhound is loosed. Finish it.', 2.6);
+    w.events.push({ t: 'fence' });
+  }
   stepCamera(w, dt);
 
   const p = w.player;

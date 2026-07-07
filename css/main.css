@@ -112,6 +112,23 @@ canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
 }
 #toast.show { opacity: 1; }
 
+/* ---------- coach: fading control hints during the first fight ---------- */
+#coach {
+  position: fixed; left: 50%; top: 38%;
+  transform: translate(-50%, -6px);
+  background: rgba(27, 21, 35, 0.82);
+  color: var(--neon);
+  border: 2px solid rgba(62, 230, 210, 0.5);
+  padding: 10px 22px; border-radius: 14px;
+  font-size: 17px; font-weight: 800; letter-spacing: 0.5px;
+  text-align: center; max-width: 78vw; line-height: 1.35;
+  opacity: 0; transition: opacity 0.3s, transform 0.3s;
+  z-index: 9; pointer-events: none;
+  box-shadow: 0 0 26px rgba(62, 230, 210, 0.25);
+}
+#coach.show { opacity: 1; transform: translate(-50%, 0); }
+#coach small { display: block; color: var(--paper); opacity: 0.7; font-size: 12px; font-weight: 600; margin-top: 3px; letter-spacing: 1px; }
+
 /* ---------- title ---------- */
 #title {
   position: fixed; inset: 0; z-index: 20;
@@ -200,6 +217,8 @@ canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
 .mission.boss { border-color: var(--pink); }
 .mission.boss .mtype { color: var(--pink); }
 .mission.boss.locked { opacity: 0.45; pointer-events: none; }
+.mission.locked { opacity: 0.5; border-style: dashed; pointer-events: none; }
+.mission.locked .mtype { color: var(--amber); }
 .denbtns { display: flex; gap: 10px; justify-content: center; align-items: center; margin-top: 12px; flex-wrap: wrap; }
 .closex {
   position: absolute; top: 8px; right: 10px;
@@ -234,6 +253,11 @@ canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
 .shopitem.owned { border-color: var(--neon); opacity: 0.6; pointer-events: none; }
 .shopitem b { color: var(--amber); }
 .choicerow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; text-align: left; }
+#denpursuit { margin-top: 10px; }
+.pursuitline { font-size: 12px; color: var(--paper); opacity: 0.9; letter-spacing: 0.5px; }
+.pursuitline b { color: var(--pink); font-size: 14px; }
+.pursuitline em { opacity: 0.7; font-style: normal; }
+.pursuitline .smallbtn { margin-top: 0; padding: 4px 12px; }
 .choicerow .mission { min-width: 200px; max-width: 240px; }
 .mission.evo { border-color: var(--neon); }
 .btn .lbl { font-size: 9px; letter-spacing: 0.5px; }

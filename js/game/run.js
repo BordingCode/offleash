@@ -9,11 +9,12 @@ import { MOVES } from '../data/moves.js';
 export const MISSIONS_PER_ACT = 5;
 export const CLEAR_TO_BOSS = 3;
 
-export function createRun(seed, starter = 'snig', perks = {}) {
+export function createRun(seed, starter = 'snig', perks = {}, pursuit = 0) {
   const run = {
     seed,
     starter,
     perks,
+    pursuit,             // opt-in difficulty ladder (0 = none). Cumulative rules, no stat inflation.
     hpBonus: perks.bedding ? 12 : 0,
     healCharges: perks.rainbarrel ? 1 : 0,
     form: starter,       // current form id (base until the Lv-6 evolution)
@@ -121,7 +122,7 @@ export function genBoard(run) {
       type, arena,
       flavor: T.flavor[(rng() * T.flavor.length) | 0],
       danger: Math.min(3, danger),
-      waves: buildWaves(run.act, wave, danger, rng),
+      waves: buildWaves(run.act, wave, danger, rng, run.pursuit),
       pylons: type === 'sabotage' ? 2 + (danger > 2 ? 1 : 0) : 0,
       arenaW: type === 'chase' ? 2600 : type === 'escort' ? 1700 : 1100 + ((rng() * 3) | 0) * 150,
     });
@@ -133,10 +134,15 @@ export function genBoard(run) {
     board[i].pylons = 2;
     board[i].flavor = MISSION_TYPES.sabotage.flavor[0];
   }
+  // Pursuit 2 — Lockdown: one mission per act is padlocked shut (fewer routes).
+  if (run.pursuit >= 2 && board.length) {
+    const lock = board.find((mi) => mi.type === 'bout') || board[(rng() * board.length) | 0];
+    lock.locked = true;
+  }
   return board;
 }
 
-function buildWaves(act, base, danger, rng) {
+function buildWaves(act, base, danger, rng, pursuit = 0) {
   // 2-3 waves built off the act table; danger adds a straggler
   const table = WAVES['act' + act];
   const n = 2 + (danger >= 2 ? 1 : 0);
@@ -146,6 +152,8 @@ function buildWaves(act, base, danger, rng) {
     waves.push(src.map((e) => ({ ...e })));
   }
   if (danger >= 3) waves[waves.length - 1].push({ s: 'growler', x: 0.05 });
+  // Pursuit 7 — Elites Everywhere: a Bellwether marshals the final wave.
+  if (pursuit >= 7) waves[waves.length - 1].push({ s: 'bellwether', x: 0.9 });
   return waves;
 }
 

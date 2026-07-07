@@ -92,6 +92,19 @@ export const DEN_IDLE = [
   ['DENT', '“Sleep. Even escape artists rust.”'],
 ];
 
+// The escape night — shown ONCE, on the very first launch (skippable). Narrative,
+// not a scripted level: it sets the tone and hands you straight to the den + first run.
+export const INTRO = {
+  id: 'escape_night', speaker: 'THE KEEPER',
+  lines: [
+    '“There now. Hold still. This won’t take a moment.” The cage light hums. It always hums.',
+    'But tonight the latch is cold, and loose, and — for the first time in your small remembered life — open.',
+    'A corridor. A kennel yard of sleeping things you will not wake. A fence you did not know you could clear.',
+    'Rain. Actual rain, with no roof edge to it. And behind you, far off, a voice that knows your name.',
+    '“…Off the leash, are we? Oh, we’ll have such fun bringing you home.”',
+  ],
+};
+
 // starters unlock in this order via rescue missions (one per act tier)
 export const RESCUE_ORDER = ['wick', 'phossa', 'dent'];
 export const CRYPTID_NAMES = { snig: 'SNIG', wick: 'WICK', phossa: 'PHOSSA', dent: 'DENT' };
