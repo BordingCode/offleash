@@ -1,0 +1,177 @@
+:root {
+  --ink: #1b1523;
+  --paper: #d8dbf2;
+  --neon: #3ee6d2;
+  --pink: #e05fd0;
+  --amber: #ffb347;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  height: 100svh;
+  overflow: hidden;
+  background: var(--ink);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+canvas#game { position: fixed; inset: 0; image-rendering: pixelated; }
+
+/* ---------- touch layout: stick left, buttons right ---------- */
+#stickzone { position: fixed; left: 0; top: 0; width: 45vw; height: 100svh; z-index: 5; }
+#stickbase {
+  position: fixed; left: 0; top: 0;
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  border: 3px solid rgba(216, 219, 242, 0.35);
+  background: rgba(216, 219, 242, 0.08);
+  z-index: 4; pointer-events: none; display: none;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+#stickbase.show { display: block; }
+#stickknob {
+  position: absolute; left: 50%; top: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(216, 219, 242, 0.85);
+  border: 3px solid var(--ink);
+  transform: translate(-50%, -50%);
+}
+
+#buttons {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+  z-index: 6;
+}
+.btn {
+  border: 3px solid rgba(216, 219, 242, 0.5);
+  border-radius: 50%;
+  background: rgba(27, 21, 35, 0.72);
+  color: var(--paper);
+  font-weight: 800;
+  width: 62px; height: 62px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  touch-action: none;
+  box-shadow: 0 0 12px rgba(62, 230, 210, 0.12);
+}
+.btn:active { background: rgba(62, 230, 210, 0.25); border-color: var(--neon); }
+.btn.big { width: 84px; height: 84px; font-size: 26px; border-color: var(--neon); }
+.btn.small { width: 52px; height: 52px; opacity: 0.9; }
+.btn .lbl { font-size: 13px; letter-spacing: 1px; pointer-events: none; }
+.btn.big .lbl { font-size: 30px; }
+.btn.cooling { opacity: 0.4; }
+.btn .cdnum {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 900; color: var(--paper);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+/* ---------- HUD ---------- */
+#hud {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  right: max(14px, env(safe-area-inset-right));
+  display: flex; justify-content: space-between; align-items: center;
+  z-index: 7; pointer-events: none;
+}
+#hpbar {
+  width: min(300px, 34vw); height: 14px;
+  background: rgba(216, 219, 242, 0.15);
+  border: 2px solid rgba(216, 219, 242, 0.4);
+  border-radius: 8px; overflow: hidden;
+}
+#hpfill {
+  display: block; height: 100%; width: 100%;
+  background: linear-gradient(90deg, var(--neon), #7ef2e2);
+  border-radius: 6px;
+  transition: width 0.15s;
+}
+#hpfill.low { background: linear-gradient(90deg, var(--pink), #ff8fa3); }
+#mutebtn { pointer-events: auto; background: none; border: none; color: var(--paper); font-size: 18px; cursor: pointer; }
+
+#toast {
+  position: fixed; top: 14%;
+  left: 50%; transform: translateX(-50%);
+  background: rgba(27, 21, 35, 0.88);
+  color: var(--paper);
+  border: 2px solid rgba(62, 230, 210, 0.4);
+  padding: 8px 20px; border-radius: 20px;
+  font-size: 15px; font-weight: 700;
+  opacity: 0; transition: opacity 0.25s;
+  z-index: 8; pointer-events: none; white-space: nowrap;
+}
+#toast.show { opacity: 1; }
+
+/* ---------- title ---------- */
+#title {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: radial-gradient(ellipse at 60% 30%, #28203a, #12101f);
+  transition: opacity 0.4s;
+}
+#title.hidden { opacity: 0; pointer-events: none; }
+#title h1 {
+  font-size: clamp(40px, 9vw, 72px);
+  color: var(--neon);
+  letter-spacing: 6px;
+  text-shadow: 0 0 24px rgba(62, 230, 210, 0.5), 0 0 60px rgba(224, 95, 208, 0.3);
+}
+#title p { color: var(--paper); opacity: 0.7; font-weight: 600; letter-spacing: 1px; }
+#title .mstone { color: var(--paper); opacity: 0.35; font-size: 12px; }
+#startbtn {
+  font-size: 20px; font-weight: 800; letter-spacing: 3px;
+  padding: 13px 52px; border-radius: 28px;
+  border: 3px solid var(--neon);
+  background: rgba(62, 230, 210, 0.12);
+  color: var(--neon); cursor: pointer;
+  box-shadow: 0 0 24px rgba(62, 230, 210, 0.25);
+}
+#startbtn:active { background: rgba(62, 230, 210, 0.3); }
+
+/* ---------- overlays ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 25;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(18, 16, 31, 0.82); padding: 20px;
+}
+.overlay.show { display: flex; }
+.panel {
+  background: #241c33;
+  border: 3px solid rgba(216, 219, 242, 0.35);
+  border-radius: 18px;
+  padding: 24px 30px;
+  max-width: 440px; text-align: center; color: var(--paper);
+  box-shadow: 0 0 40px rgba(224, 95, 208, 0.15);
+}
+.panel h2 { font-size: 24px; margin-bottom: 8px; color: var(--pink); letter-spacing: 2px; }
+.panel p { font-size: 15px; line-height: 1.5; margin-bottom: 10px; }
+.panel .dim { opacity: 0.6; font-size: 13px; }
+.bigbtn {
+  font-size: 16px; font-weight: 800; letter-spacing: 2px;
+  padding: 11px 34px; border-radius: 24px;
+  border: 3px solid var(--neon);
+  background: rgba(62, 230, 210, 0.12); color: var(--neon);
+  cursor: pointer; font-family: inherit;
+}
+.bigbtn:active { background: rgba(62, 230, 210, 0.3); }
+
+/* ---------- rotate hint (this game is LANDSCAPE) ---------- */
+#rotate {
+  display: none; position: fixed; inset: 0; z-index: 30;
+  background: var(--ink); color: var(--paper);
+  text-align: center; align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; font-size: 19px; font-weight: 700; padding: 30px;
+}
+#rotate span { font-size: 52px; display: block; animation: spin 1.6s ease-in-out infinite; }
+@keyframes spin { 0%, 25% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) { #rotate { display: flex; } }

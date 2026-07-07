@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>OFF-LEASH</title>
+<meta name="description" content="A moody neon-night brawler roguelike — you are the monster, and you are DONE being collected.">
+<meta name="theme-color" content="#1b1523">
+<link rel="manifest" href="manifest.json?v=1">
+<link rel="icon" href="assets/icons/icon.svg?v=1" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="css/main.css?v=1">
+<script>
+// hub-stats tracker v2
+(function(){try{var A="offleash",K="hubdev",d=localStorage.getItem(K);if(!d){d=(self.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now()+"."+Math.random().toString(36).slice(2));localStorage.setItem(K,d);}var u="https://hub-stats.mathiasjob.workers.dev/hit",b=JSON.stringify({app:A,d:d});if(navigator.sendBeacon){navigator.sendBeacon(u,b);}else{fetch(u,{method:"POST",body:b,keepalive:true,mode:"no-cors"});}}catch(e){}})();
+</script>
+<script>
+// boot watchdog: if the game hasn't rendered within 3.5s, nuke SW + caches once and reload
+(function(){
+  setTimeout(function(){
+    if (window.__ol) return;
+    if (sessionStorage.getItem('ol_rescued')) return;
+    sessionStorage.setItem('ol_rescued', '1');
+    Promise.all([
+      'serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister()}))}) : null,
+      window.caches ? caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k)}))}) : null
+    ]).then(function(){ location.reload(); });
+  }, 3500);
+})();
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="stickzone"></div>
+<div id="stickbase"><div id="stickknob"></div></div>
+
+<div id="buttons">
+  <button class="btn small" id="ab1btn"><span class="lbl">◐</span><b class="cdnum"></b></button>
+  <button class="btn small" id="ab2btn"><span class="lbl">⚟</span><b class="cdnum"></b></button>
+  <button class="btn small" id="ab3btn"><span class="lbl">◎</span><b class="cdnum"></b></button>
+  <button class="btn" id="dashbtn"><span class="lbl">DASH</span></button>
+  <button class="btn" id="jumpbtn"><span class="lbl">JUMP</span></button>
+  <button class="btn big" id="atkbtn"><span class="lbl">A</span></button>
+</div>
+
+<div id="hud">
+  <div id="hpbar"><i id="hpfill"></i></div>
+  <button id="mutebtn">♪</button>
+</div>
+<div id="toast"></div>
+
+<div id="title">
+  <h1>OFF-LEASH</h1>
+  <p>they collected you. collect yourself back.</p>
+  <button id="startbtn">RUN</button>
+  <span class="mstone">milestone 1 · the practice yard</span>
+</div>
+
+<div class="overlay" id="defeat">
+  <div class="panel">
+    <h2>Caught.</h2>
+    <p id="defcause"></p>
+    <p id="defstats" class="dim"></p>
+    <button id="againbtn" class="bigbtn">Run it back</button>
+  </div>
+</div>
+
+<div id="rotate"><span>📱</span>Turn your phone sideways — the night is wide.</div>
+
+<script type="module" src="js/main.js?v=1"></script>
+</body>
+</html>
